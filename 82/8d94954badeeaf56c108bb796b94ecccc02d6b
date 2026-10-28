@@ -1,0 +1,41 @@
+skillhub-logo.svg
+  s_e1d5f1a609ce96::t_a3b515f1353ae9 1-13
+web/src/i18n/locales/zh.json
+  s_e1d5f1a609ce96::t_1f45695a69fbd4 2-4
+web/index.html
+  s_e1d5f1a609ce96::t_730ab0c5824912 11
+web/src/pages/home.tsx
+  s_e1d5f1a609ce96::t_730ab0c5824912 41
+web/src/shared/components/brand-mark.tsx
+  s_e1d5f1a609ce96::t_730ab0c5824912 13
+web/src/i18n/locales/en.json
+  s_e1d5f1a609ce96::t_1f45695a69fbd4 2-4
+web/src/i18n/locales/ko.json
+  s_e1d5f1a609ce96::t_1f45695a69fbd4 2-4
+web/src/i18n/locales/ru.json
+  s_e1d5f1a609ce96::t_1f45695a69fbd4 2-4
+web/src/app/layout.tsx
+  s_e1d5f1a609ce96::t_730ab0c5824912 126,242
+web/src/features/auth/auth-shell.tsx
+  s_e1d5f1a609ce96::t_730ab0c5824912 39,41
+web/src/pages/landing.tsx
+  s_e1d5f1a609ce96::t_730ab0c5824912 190
+web/public/favicon.svg
+  s_e1d5f1a609ce96::t_a3b515f1353ae9 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "828d94954badeeaf56c108bb796b94ecccc02d6b",
+  "prompts": {},
+  "sessions": {
+    "s_e1d5f1a609ce96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8203240-5383-4cfa-b960-a5a673e81d5e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
