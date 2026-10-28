@@ -1,0 +1,33 @@
+web/src/i18n/locales/en.json
+  s_e1d5f1a609ce96::t_ef255c484fc8f8 1227
+web/src/i18n/locales/ko.json
+  s_e1d5f1a609ce96::t_ef255c484fc8f8 1505
+web/src/app/layout-main-content.ts
+  s_e1d5f1a609ce96::t_5595ef29472b68 11
+web/src/i18n/locales/ru.json
+  s_e1d5f1a609ce96::t_ef255c484fc8f8 1292
+server/skillhub-app/src/main/java/com/iflytek/skillhub/controller/LocalAuthController.java
+  s_e1d5f1a609ce96::t_cb30b4650492ec 32-34
+web/src/i18n/locales/zh.json
+  s_e1d5f1a609ce96::t_ef255c484fc8f8 1227
+web/src/pages/admin/users.tsx
+  s_e1d5f1a609ce96::t_5ec1920b19ef75 64,132,361,370
+web/src/pages/login.tsx
+  s_e1d5f1a609ce96::t_d7d5ec09026a70 122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ca814539138c5713f3c2c8fe71795526f337985",
+  "prompts": {},
+  "sessions": {
+    "s_e1d5f1a609ce96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8203240-5383-4cfa-b960-a5a673e81d5e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
