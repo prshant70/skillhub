@@ -3,9 +3,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import en from '@/i18n/locales/en.json'
-import ko from '@/i18n/locales/ko.json'
-import ru from '@/i18n/locales/ru.json'
-import zh from '@/i18n/locales/zh.json'
 
 const mocks = vi.hoisted(() => ({
   pages: new Map<number, { items: Array<Record<string, unknown>>; total: number; page: number; size: number }>(),
@@ -161,20 +158,14 @@ describe('skill reviews', () => {
     expect(screen.getByText(reviewText).className).toContain('[overflow-wrap:anywhere]')
   })
 
-  it('keeps review interaction copy in every supported locale', () => {
-    for (const locale of [en, zh, ru, ko]) {
-      expect(locale.skillReviews.ratingDisplay).toBeTruthy()
-      expect(locale.skillReviews.ratingOption).toBeTruthy()
-      expect(locale.skillReviews.reviewTextLabel).toBeTruthy()
-      expect(locale.skillReviews.hide).toBeTruthy()
-      expect(locale.skillReviews.restore).toBeTruthy()
-    }
+  it('keeps review interaction copy present', () => {
+    expect(en.skillReviews.ratingDisplay).toBeTruthy()
+    expect(en.skillReviews.ratingOption).toBeTruthy()
+    expect(en.skillReviews.reviewTextLabel).toBeTruthy()
+    expect(en.skillReviews.hide).toBeTruthy()
+    expect(en.skillReviews.restore).toBeTruthy()
     expect(en.skillReviews.count_one).toBe('{{count}} review')
     expect(en.skillReviews.count_other).toBe('{{count}} reviews')
-    expect(ru.skillReviews.count_one).toBeTruthy()
-    expect(ru.skillReviews.count_few).toBeTruthy()
-    expect(ru.skillReviews.count_many).toBeTruthy()
-    expect(ru.skillReviews.count_other).toBeTruthy()
   })
 
   it('lets an authenticated author clear existing text when the skill is not interactable', () => {

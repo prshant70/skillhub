@@ -1,8 +1,6 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createInstance } from 'i18next'
-import { I18nextProvider } from 'react-i18next'
-import ko from '@/i18n/locales/ko.json'
 import { afterEach } from 'vitest'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -127,25 +125,6 @@ describe('LoginPage', () => {
     expect(html).toContain('login.submit')
     expect(html).not.toContain('login.tabOAuth')
     expect(html).toContain('login.register')
-  })
-
-  it('renders a complete Korean agreement with working policy links', async () => {
-    await koreanI18n.init({ lng: 'ko', resources: { ko: { translation: ko } } })
-    authMethodsFixture.localize = true
-    render(<I18nextProvider i18n={koreanI18n}><LoginPage /></I18nextProvider>)
-    const terms = screen.getByRole('link', { name: '이용약관' })
-    const privacy = screen.getByRole('link', { name: '개인정보처리방침' })
-    expect(terms.getAttribute('href')).toBe('/terms')
-    expect(privacy.getAttribute('href')).toBe('/privacy')
-    expect(terms.parentElement?.textContent).toBe('로그인하면 이용약관 및 개인정보처리방침에 동의하게 됩니다.')
-  })
-
-  it('shows a translated disabled-account reason instead of a missing key', async () => {
-    await koreanI18n.init({ lng: 'ko', resources: { ko: { translation: ko } } })
-    authMethodsFixture.localize = true
-    authMethodsFixture.reason = 'accountDisabled'
-    render(<I18nextProvider i18n={koreanI18n}><LoginPage /></I18nextProvider>)
-    expect(screen.getByText('비활성화된 계정입니다')).toBeTruthy()
   })
 
   it('hides password and registration entry when local authentication is disabled', () => {

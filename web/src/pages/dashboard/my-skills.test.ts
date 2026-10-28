@@ -2,7 +2,6 @@ import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createInstance, type i18n } from 'i18next'
-import zh from '@/i18n/locales/zh.json'
 import en from '@/i18n/locales/en.json'
 
 const navigateMock = vi.fn()
@@ -334,9 +333,10 @@ describe('MySkillsPage', () => {
     expect(html).not.toContain('mySkills.statusPublished')
   })
 
-  it.each(['zh', 'en'])('shows effective private access and the pending public request after refresh in %s', async language => {
+  it('shows effective private access and the pending public request after refresh', async () => {
+    const language = 'en'
     renderI18n = createInstance()
-    await renderI18n.init({ lng: language, fallbackLng: false, resources: { zh: { translation: zh }, en: { translation: en } }, interpolation: { escapeValue: false } })
+    await renderI18n.init({ lng: language, fallbackLng: false, resources: { en: { translation: en } }, interpolation: { escapeValue: false } })
     const item = { id: 1, displayName: 'Owned skill', namespace: 'team-ai', slug: 'owned', status: 'ACTIVE',
       visibility: 'PRIVATE', downloadCount: 0, managementState: { requestedVisibility: 'PUBLIC', reviewTaskId: 42 } }
     useMySkillsMock.mockReturnValue({ data: { items: [item], total: 1, page: 0, size: 10 }, isLoading: false })

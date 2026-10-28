@@ -13,23 +13,19 @@ describe('formatRelativeTime', () => {
   afterEach(() => vi.useRealTimers())
 
   it.each([
-    [0, '방금'], [0.5, '방금'], [1, '1분 전'], [59, '59분 전'],
-    [60, '1시간 전'], [1439, '23시간 전'], [1440, '1일 전'], [29 * 1440, '29일 전'],
-  ])('formats %s minutes ago in Korean', (minutes, expected) => {
-    expect(formatRelativeTime(ago(minutes), 'ko-KR')).toBe(expected)
+    [0, 'just now'], [0.5, 'just now'], [1, '1m'], [59, '59m'],
+    [60, '1h'], [1439, '23h'], [1440, '1d'], [29 * 1440, '29d'],
+  ])('formats %s minutes ago', (minutes, expected) => {
+    expect(formatRelativeTime(ago(minutes), 'en')).toBe(expected)
   })
 
-  it.each([['en', '5m'], ['zh-CN', '5分钟'], ['ru-RU', '5 мин']])('preserves compact %s output', (locale, expected) => {
-    expect(formatRelativeTime(ago(5), locale)).toBe(expected)
-  })
-
-  it('uses the selected locale for older dates', () => {
+  it('falls back to a plain date for anything older than a month', () => {
     const date = ago(30 * 1440)
-    expect(formatRelativeTime(date, 'ko')).toBe(new Date(date).toLocaleDateString('ko'))
+    expect(formatRelativeTime(date, 'en')).toBe(new Date(date).toLocaleDateString('en'))
   })
 
-  it.each([0, 5, 60, 1440, 30 * 1440])('does not append a second suffix in Korean notifications (%s minutes)', (minutes) => {
-    const time = formatRelativeTime(ago(minutes), 'ko')
-    expect(i18n.getFixedT('ko')('notification.timeAgo', { time })).toBe(time)
+  it.each([0, 5, 60, 1440, 30 * 1440])('wraps the formatted time in the notification suffix (%s minutes)', (minutes) => {
+    const time = formatRelativeTime(ago(minutes), 'en')
+    expect(i18n.getFixedT('en')('notification.timeAgo', { time })).toBe(`${time} ago`)
   })
 })

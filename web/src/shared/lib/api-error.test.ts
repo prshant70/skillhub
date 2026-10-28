@@ -12,7 +12,7 @@ vi.mock('./toast', () => ({
 describe('ApiError', () => {
   beforeEach(async () => {
     errorSpy.mockReset()
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('en')
   })
 
   it('keeps the provided server message key', async () => {
@@ -27,7 +27,7 @@ describe('ApiError', () => {
 describe('handleApiError', () => {
   beforeEach(async () => {
     errorSpy.mockReset()
-    await i18n.changeLanguage('zh')
+    await i18n.changeLanguage('en')
     vi.stubGlobal('window', { location: { href: '' } })
   })
 
@@ -49,19 +49,18 @@ describe('handleApiError', () => {
     expect(window.location.href).toBe('/login?reason=accountDisabled')
   })
 
-  it('recognizes a Korean disabled-account message after switching to English', async () => {
+  it('recognizes a disabled-account error from the server message key', async () => {
     const { ApiError, handleApiError } = await import('./api-error')
-    await i18n.changeLanguage('en')
-    handleApiError(new ApiError('비활성화된 계정입니다', 401, '비활성화된 계정입니다'))
+    handleApiError(new ApiError('apiError.unauthorized', 401, 'whatever', 'error.auth.local.accountDisabled'))
     expect(errorSpy).not.toHaveBeenCalled()
     expect(window.location.href).toBe('/login?reason=accountDisabled')
   })
 
-  it('shows localized network errors in Korean', async () => {
+  it('recognizes a disabled-account error from a localized server message', async () => {
     const { ApiError, handleApiError } = await import('./api-error')
-    await i18n.changeLanguage('ko')
-    handleApiError(new ApiError('Network error', 0))
-    expect(errorSpy).toHaveBeenLastCalledWith('네트워크 연결에 실패했습니다. 네트워크를 확인하세요')
+    handleApiError(new ApiError('Account is disabled', 401, 'Account is disabled'))
+    expect(errorSpy).not.toHaveBeenCalled()
+    expect(window.location.href).toBe('/login?reason=accountDisabled')
   })
 
   it('falls back to the server message for non-standard api errors', async () => {
@@ -77,7 +76,7 @@ describe('handleApiError', () => {
 
     handleApiError(new ApiError('Network error', 0))
 
-    expect(errorSpy).toHaveBeenLastCalledWith('网络连接失败，请检查网络')
+    expect(errorSpy).toHaveBeenLastCalledWith('Network connection failed, please check your network')
   })
 
   it('shows network error message when status is 0 with timeout', async () => {
@@ -85,6 +84,6 @@ describe('handleApiError', () => {
 
     handleApiError(new ApiError('error.request.timeout', 0))
 
-    expect(errorSpy).toHaveBeenLastCalledWith('网络连接失败，请检查网络')
+    expect(errorSpy).toHaveBeenLastCalledWith('Network connection failed, please check your network')
   })
 })

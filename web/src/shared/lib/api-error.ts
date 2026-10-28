@@ -27,12 +27,12 @@ export class ApiError extends Error {
 }
 
 function isAccountDisabledError(error: ApiError): boolean {
+  // Only English is bundled in the client, but the server still localizes by
+  // Accept-Language, so the key and substring checks below remain the reliable
+  // signals rather than comparing against a translated string.
   const accountDisabledMessages = [
     i18n.t('error.auth.local.accountDisabled'),
     i18n.getFixedT('en')('error.auth.local.accountDisabled'),
-    i18n.getFixedT('ko')('error.auth.local.accountDisabled'),
-    i18n.getFixedT('ru')('error.auth.local.accountDisabled'),
-    i18n.getFixedT('zh')('error.auth.local.accountDisabled'),
   ]
   const normalizedServerMessage = (error.serverMessage ?? '').toLowerCase()
   const normalizedMessage = error.message.toLowerCase()

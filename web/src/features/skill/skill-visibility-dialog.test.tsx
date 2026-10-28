@@ -5,9 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
-import zh from '@/i18n/locales/zh.json'
 import en from '@/i18n/locales/en.json'
-import ru from '@/i18n/locales/ru.json'
 
 const api = vi.hoisted(() => ({ getVisibility: vi.fn(), changeVisibility: vi.fn() }))
 vi.mock('@/api/client', () => ({ skillLifecycleApi: api }))
@@ -22,12 +20,12 @@ vi.mock('@/shared/ui/select', () => ({
 }))
 import { SkillVisibilityDialog } from './skill-visibility-dialog'
 
-async function mount(visibility = 'PUBLIC', language = 'zh') {
+async function mount(visibility = 'PUBLIC') {
   const i18n = createInstance()
   await i18n.init({
-    lng: language,
+    lng: 'en',
     fallbackLng: false,
-    resources: { zh: { translation: zh }, en: { translation: en }, ru: { translation: ru } },
+    resources: { en: { translation: en } },
     interpolation: { escapeValue: false },
   })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -38,13 +36,10 @@ async function mount(visibility = 'PUBLIC', language = 'zh') {
 describe('SkillVisibilityDialog', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-  it.each([
-    ['zh', '取消', '保存'],
-    ['en', 'Cancel', 'Save'],
-    ['ru', 'Отмена', 'Сохранить'],
-  ])('shows usable dialog action labels in %s without translation fallback', async (language, cancel, save) => {
+  it('shows usable dialog action labels without translation fallback', async () => {
+    const [cancel, save] = ['Cancel', 'Save']
     api.getVisibility.mockResolvedValue({ visibility: 'PUBLIC' })
-    await mount('PUBLIC', language)
+    await mount('PUBLIC')
     expect(screen.getByRole('button', { name: cancel })).toBeTruthy()
     expect(screen.getByRole('button', { name: save })).toBeTruthy()
     expect(screen.queryByText(/^(common|dialog|profile)\.(cancel|save)$/)).toBeNull()
@@ -59,8 +54,8 @@ describe('SkillVisibilityDialog', () => {
     await mount()
     await waitFor(() => expect(api.getVisibility).toHaveBeenCalledWith('team', 'foo'))
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'PRIVATE' } })
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(false))
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.changeVisibility).toHaveBeenCalledWith('team', 'foo', 'PRIVATE'))
   })
 
@@ -69,8 +64,8 @@ describe('SkillVisibilityDialog', () => {
     await mount('PRIVATE')
     await waitFor(() => expect(api.getVisibility).toHaveBeenCalled())
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'PUBLIC' } })
-    expect(screen.getByText(zh.skillVisibility.expanding)).toBeTruthy()
-    expect(screen.getByRole('button', { name: zh.skillVisibility.submit })).toBeTruthy()
+    expect(screen.getByText(en.skillVisibility.expanding)).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.skillVisibility.submit })).toBeTruthy()
   })
 
   it('reloads a pending request and prevents duplicate submission', async () => {
@@ -78,7 +73,7 @@ describe('SkillVisibilityDialog', () => {
     await mount('PRIVATE')
     await screen.findByRole('status')
     expect(screen.getByRole('combobox').hasAttribute('disabled')).toBe(true)
-    expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true)
     expect(api.changeVisibility).not.toHaveBeenCalled()
   })
 
@@ -87,6 +82,6 @@ describe('SkillVisibilityDialog', () => {
     await mount()
     await screen.findByRole('alert')
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'PRIVATE' } })
-    expect(screen.getByRole('button', { name: '保存' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true)
   })
 })
