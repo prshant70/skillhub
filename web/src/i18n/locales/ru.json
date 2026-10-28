@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "name": "1mg SkillHub"
+  },
   "compliance": {
     "title": "Заявления о соответствии",
     "mappingCount": "{{count}} элементов",

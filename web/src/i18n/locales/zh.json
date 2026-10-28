@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "name": "1mg SkillHub"
+  },
   "compliance": {
     "title": "合规声明",
     "mappingCount": "{{count}} 项",

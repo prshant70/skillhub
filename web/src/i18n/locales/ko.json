@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "name": "1mg SkillHub"
+  },
   "compliance": {
     "title": "규정 준수 선언",
     "mappingCount": "{{count}}개 항목",

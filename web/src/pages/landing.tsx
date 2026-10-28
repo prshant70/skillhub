@@ -187,7 +187,7 @@ function EnterpriseSection() {
                 </div>
                 <div className="flex flex-col items-center sm:flex-shrink-0">
                   <div className="mb-0.5 text-center text-[10px] text-muted-foreground">{t('landing.experience.enterprise.serviceLayer')}</div>
-                  <div className="rounded-lg bg-neutral-900 px-3.5 py-3 text-center text-xs font-semibold leading-tight text-white">SkillHub<br />Registry</div>
+                  <div className="rounded-lg bg-neutral-900 px-3.5 py-3 text-center text-xs font-semibold leading-tight text-white">{t('brand.name')}<br />Registry</div>
                 </div>
                 <div className="flex h-8 items-center justify-center sm:h-auto sm:min-w-0 sm:flex-1">
                   <svg className="h-4 w-16 rotate-90 text-border sm:w-full sm:max-w-16 sm:rotate-0" fill="none" stroke="currentColor" viewBox="0 0 64 16"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" strokeDasharray="3 3" d="M0 8h54" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M50 4l6 4-6 4" /></svg>
