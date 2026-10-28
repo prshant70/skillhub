@@ -358,6 +358,8 @@
     "externalIdentityHint": "Feishu, DingTalk, GitHub, GitLab и похожие входы публикуются сервером. Принадлежность аккаунта определяют привязки и членство в организациях на backend.",
     "tabPassword": "Пароль",
     "tabOAuth": "OAuth",
+    "tabAdmin": "Вход администратора",
+    "noOAuthMethods": "Поставщик единого входа ещё не настроен.",
     "username": "Имя пользователя",
     "password": "Пароль",
     "usernamePlaceholder": "Введите имя пользователя",

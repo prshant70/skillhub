@@ -358,6 +358,8 @@
     "externalIdentityHint": "飞书、钉钉、GitHub、GitLab 等入口由服务端配置；登录后的账号归属由后端绑定和组织关系决定。",
     "tabPassword": "账号密码",
     "tabOAuth": "OAuth",
+    "tabAdmin": "管理员登录",
+    "noOAuthMethods": "尚未配置单点登录提供方。",
     "username": "用户名",
     "password": "密码",
     "usernamePlaceholder": "输入用户名",

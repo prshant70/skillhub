@@ -28,17 +28,22 @@ export function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loginMode, setLoginMode] = useState<'personal' | 'organization'>('personal')
+  const [authTab, setAuthTab] = useState<'oauth' | 'admin'>('oauth')
   const [fieldErrors, setFieldErrors] = useState<{ username?: string, password?: string }>({})
   const returnTo = resolveAuthReturnTo(search.returnTo)
   const { data: authMethods, isLoading: authMethodsLoading } = useAuthMethods(returnTo)
   const { data: localCapabilities, isError: localCapabilitiesError } = useLocalAuthCapabilities()
   const passwordEnabled = localCapabilities?.passwordLoginEnabled === true
-  const effectiveLoginMode = passwordEnabled ? loginMode : 'organization'
   const disabledMessage = search.reason === 'accountDisabled' ? t('error.auth.local.accountDisabled') : null
   const bootstrapMethod = authMethods?.find((method) => method.methodType === 'SESSION_BOOTSTRAP')
-  const hasOrganizationMethod = bootstrapConfig.enabled
-  const hasExternalMethods = authMethods?.some((method) => method.methodType === 'OAUTH_REDIRECT')
+  const hasExternalMethods = authMethods?.some((method) => method.methodType === 'OAUTH_REDIRECT') ?? false
+  // Count an in-flight lookup as "SSO may exist" so the password form never
+  // flashes before the OAuth tab resolves.
+  const externalAvailable = authMethodsLoading || hasExternalMethods || bootstrapConfig.enabled
+  const showTabs = passwordEnabled && externalAvailable
+  // SSO is the intended entry point; the password tab is the admin fallback and
+  // only becomes the default when there is no external method at all.
+  const effectiveTab = !passwordEnabled ? 'oauth' : externalAvailable ? authTab : 'admin'
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -82,18 +87,39 @@ export function LoginPage() {
           </div>
         ) : null}
 
-        {hasOrganizationMethod && passwordEnabled ? (
+        {showTabs ? (
           <div role="group" aria-label={t('login.loginMode')} className="grid grid-cols-2 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900">
-            <button type="button" aria-pressed={loginMode === 'personal'} onClick={() => setLoginMode('personal')} className={`h-11 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 xl:h-10 ${loginMode === 'personal' ? 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100' : 'text-muted-foreground hover:text-foreground'}`}>
-              {t('login.tabPersonal')}
+            <button type="button" aria-pressed={effectiveTab === 'oauth'} onClick={() => setAuthTab('oauth')} className={`h-11 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 xl:h-10 ${effectiveTab === 'oauth' ? 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100' : 'text-muted-foreground hover:text-foreground'}`}>
+              {t('login.tabOAuth')}
             </button>
-            <button type="button" aria-pressed={loginMode === 'organization'} onClick={() => setLoginMode('organization')} className={`h-11 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 xl:h-10 ${loginMode === 'organization' ? 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100' : 'text-muted-foreground hover:text-foreground'}`}>
-              {t('login.tabEnterprise')}
+            <button type="button" aria-pressed={effectiveTab === 'admin'} onClick={() => setAuthTab('admin')} className={`h-11 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 xl:h-10 ${effectiveTab === 'admin' ? 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100' : 'text-muted-foreground hover:text-foreground'}`}>
+              {t('login.tabAdmin')}
             </button>
           </div>
         ) : null}
 
-        {passwordEnabled ? <div hidden={effectiveLoginMode !== 'personal'}>
+        {effectiveTab === 'oauth' ? (
+          <div className="space-y-4">
+            {authMethodsLoading || hasExternalMethods ? (
+              <AuthMethodButtonList methods={authMethods} isLoading={authMethodsLoading} compact />
+            ) : null}
+            {bootstrapConfig.enabled ? (
+              <div className="space-y-2">
+                <SessionBootstrapEntry
+                  methodDisplayName={bootstrapMethod?.displayName}
+                  onAuthenticated={() => navigate({ to: returnTo })}
+                  compact
+                />
+                <p className="text-sm text-muted-foreground">{t('login.orgLoginHint')}</p>
+              </div>
+            ) : null}
+            {!authMethodsLoading && !hasExternalMethods && !bootstrapConfig.enabled ? (
+              <p className="text-sm text-muted-foreground">{t('login.noOAuthMethods')}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {passwordEnabled && effectiveTab === 'admin' ? <div>
         <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="username">{t('login.username')}</label>
@@ -166,26 +192,6 @@ export function LoginPage() {
         ) : null}
         {localCapabilities && !passwordEnabled && !bootstrapConfig.enabled && !hasExternalMethods ? (
           <p className="text-sm text-muted-foreground">{t('systemConfig.passwordDisabled')}</p>
-        ) : null}
-
-        {bootstrapConfig.enabled ? (
-          <div hidden={effectiveLoginMode !== 'organization'} className="space-y-2">
-            <SessionBootstrapEntry
-              methodDisplayName={bootstrapMethod?.displayName}
-              onAuthenticated={() => navigate({ to: returnTo })}
-              compact
-            />
-            <p className="text-sm text-muted-foreground">{t('login.orgLoginHint')}</p>
-          </div>
-        ) : null}
-
-        {authMethodsLoading || hasExternalMethods ? (
-          <section className="space-y-3" aria-label={t('login.otherMethods')}>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-              {t('login.otherMethods')}
-            </div>
-            <AuthMethodButtonList methods={authMethods} isLoading={authMethodsLoading} compact />
-          </section>
         ) : null}
 
         {localCapabilities?.registrationAvailable ? <p className="text-center text-sm text-muted-foreground">

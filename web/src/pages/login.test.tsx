@@ -125,7 +125,7 @@ describe('LoginPage', () => {
     expect(html).toContain('login.title')
     expect(html).toContain('login.subtitle')
     expect(html).toContain('login.submit')
-    expect(html).not.toContain('login.tabEnterprise')
+    expect(html).not.toContain('login.tabOAuth')
     expect(html).toContain('login.register')
   })
 
@@ -182,31 +182,40 @@ describe('LoginPage', () => {
     await waitFor(() => expect(authMethodsFixture.navigate).toHaveBeenCalledWith({ to: '/skills?tab=mine' }))
   })
 
-  it('replaces the password form with configured session bootstrap and can switch back', () => {
+  it('defaults to single sign-on and can switch to the admin password tab', () => {
     authMethodsFixture.bootstrapEnabled = true
     render(<LoginPage />)
-    const personal = screen.getByRole('button', { name: 'login.tabPersonal' })
-    const organization = screen.getByRole('button', { name: 'login.tabEnterprise' })
+    const sso = screen.getByRole('button', { name: 'login.tabOAuth' })
+    const admin = screen.getByRole('button', { name: 'login.tabAdmin' })
 
-    expect(personal.getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).toBeNull()
+    // SSO is the landing tab, so the password form is not rendered at all.
+    expect(sso.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByLabelText('login.password')).toBeNull()
+    expect(screen.getByText('session bootstrap')).toBeTruthy()
 
-    fireEvent.click(organization)
-    expect(organization.getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).not.toBeNull()
-    expect(screen.getByText('session bootstrap').closest('[hidden]')).toBeNull()
+    fireEvent.click(admin)
+    expect(admin.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('login.password')).toBeTruthy()
+    expect(screen.queryByText('session bootstrap')).toBeNull()
 
-    fireEvent.click(personal)
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).toBeNull()
-    expect(screen.getByText('session bootstrap').closest('[hidden]')).not.toBeNull()
+    fireEvent.click(sso)
+    expect(screen.queryByLabelText('login.password')).toBeNull()
   })
 
-  it('does not show an organization entry when bootstrap is not configured', () => {
+  it('lands on the admin tab and hides the tab strip when no external method exists', () => {
     render(<LoginPage />)
 
-    expect(screen.queryByRole('button', { name: 'login.tabEnterprise' })).toBeNull()
-    expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabOAuth' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabAdmin' })).toBeNull()
+    expect(screen.getByLabelText('login.password')).toBeTruthy()
+  })
+
+  it('defaults to single sign-on when an OAuth provider is configured', () => {
+    authMethodsFixture.methods = [{ id: 'google', methodType: 'OAUTH_REDIRECT' }]
+    render(<LoginPage />)
+
+    expect(screen.getByRole('button', { name: 'login.tabOAuth' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByLabelText('login.password')).toBeNull()
   })
 
   it('keeps password login available without a warning when the method catalog fails', () => {
@@ -215,7 +224,7 @@ describe('LoginPage', () => {
     render(<LoginPage />)
 
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'login.tabEnterprise' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabOAuth' })).toBeNull()
     expect(screen.getByRole('button', { name: 'login.submit' })).toBeTruthy()
   })
 
@@ -223,7 +232,7 @@ describe('LoginPage', () => {
     authMethodsFixture.methods = [{ id: 'proxy', methodType: 'SESSION_BOOTSTRAP' }]
     render(<LoginPage />)
 
-    expect(screen.queryByRole('button', { name: 'login.tabEnterprise' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabOAuth' })).toBeNull()
     expect(screen.queryByText('session bootstrap')).toBeNull()
   })
 
@@ -233,7 +242,7 @@ describe('LoginPage', () => {
     authMethodsFixture.isError = true
     render(<LoginPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'login.tabEnterprise' }))
-    expect(screen.getByText('session bootstrap').closest('[hidden]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'login.tabOAuth' }))
+    expect(screen.getByText('session bootstrap')).toBeTruthy()
   })
 })

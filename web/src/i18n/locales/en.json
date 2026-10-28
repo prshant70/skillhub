@@ -358,6 +358,8 @@
     "externalIdentityHint": "Feishu, DingTalk, GitHub, GitLab, and similar entries are advertised by the server. Account ownership is decided by backend binding and organization membership.",
     "tabPassword": "Password",
     "tabOAuth": "OAuth",
+    "tabAdmin": "Admin Login",
+    "noOAuthMethods": "No single sign-on provider is configured yet.",
     "username": "Username",
     "password": "Password",
     "usernamePlaceholder": "Enter username",

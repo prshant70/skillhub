@@ -395,6 +395,8 @@
     "externalIdentityHint": "Feishu, DingTalk, GitHub, GitLab 등의 로그인 항목은 서버에서 제공합니다. 계정 소유권은 서버의 계정 연결과 조직 소속에 따라 결정됩니다.",
     "tabPassword": "비밀번호",
     "tabOAuth": "OAuth",
+    "tabAdmin": "관리자 로그인",
+    "noOAuthMethods": "아직 구성된 Single Sign-On 공급자가 없습니다.",
     "username": "사용자 이름",
     "password": "비밀번호",
     "usernamePlaceholder": "사용자 이름 입력",
