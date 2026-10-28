@@ -29,6 +29,8 @@ Check the workflow's `secrets:` and registry references before re-enabling.
 | `pr-cli.yml` | only if we keep the CLI |
 | `pr-scanner-image.yml` | scanner image build target |
 | `security.yml` | review the scheduled trigger and any code-scanning setup |
+| `backend-tests.yml` | nothing; added upstream after our fork |
+| `migration-preflight.yml` | **uses `pull_request_target`** — see the warning below |
 
 **Re-enable later — needs our own registry / hosting**
 
@@ -38,6 +40,8 @@ Check the workflow's `secrets:` and registry references before re-enabling.
 | `publish-chart.yml` | our chart repository |
 | `deploy-docs.yml` | our docs hosting (currently GitHub Pages at `/skillhub/`) |
 | `pr-batch-test-deploy.yml` | `workflow_dispatch` only; deploy target |
+| `check-dsh-plugin.yml` | only if we adopt the DSH plugin |
+| `release-dsh-plugin.yml` | `workflow_dispatch`; only if we publish that plugin |
 
 **Probably delete — upstream community automation, not applicable here**
 
@@ -45,7 +49,14 @@ Check the workflow's `secrets:` and registry references before re-enabling.
 `issue-backlog-rescore.yml` (upstream's contributor reward and LLM issue triage
 programs), `deepwiki.yml` (external DeepWiki service), `release-notes.yml` and
 `release-cli.yml` (upstream release and npm publishing), `riscv64-images.yml`
-(riscv64 builds we do not ship).
+(riscv64 builds we do not ship), `pr-github-sync.yml` (syncs PRs to upstream's
+own GitHub project board).
+
+## Before re-enabling `migration-preflight.yml`
+
+It triggers on `pull_request_target`, which runs with repository secrets and
+write permissions in the context of the *base* repo, including for PRs opened
+from forks. Read what it executes before turning it on.
 
 Their supporting Deno scripts live in `.github/scripts/` and can go at the same
 time.

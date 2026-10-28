@@ -64,14 +64,13 @@ Skill，欢迎分享给 SkillHub 社区，与大家一起丰富开放、实用�
 - **API 令牌管理** — 为 CLI 和程序化访问生成作用域令牌，采用基于前缀的安全哈希。
 - **CLI 优先** — 原生 REST API，加上对现有 ClawHub 风格注册中心客户端的兼容层。原生 CLI API 是主要支持路径，协议兼容性持续扩展中。
 - **可插拔存储** — 开发环境使用本地文件系统，生产环境使用 S3 / MinIO。通过配置切换。
-- **国际化** — 使用 i18next 支持多语言。
+- **国际化** — 使用 i18next 支持英语、简体中文、俄语和韩语。
 
 ## 快速开始
 
 使用以下命令启动完整的本地环境：
 
 ```bash
-rm -rf /tmp/skillhub-runtime
 curl -fsSL https://imageless.oss-cn-beijing.aliyuncs.com/runtime.sh | sh -s -- up
 ```
 
@@ -94,7 +93,13 @@ curl -fsSL https://imageless.oss-cn-beijing.aliyuncs.com/runtime.sh | sh -s -- u
 curl -fsSL https://imageless.oss-cn-beijing.aliyuncs.com/runtime.sh | sh -s -- up --aliyun --public-url https://skillhub.your-company.com --version latest
 ```
 
-如果部署遇到问题，请清除现有的运行时目录并重试。
+重新运行或更新部署时，请保留现有的运行时目录。运行时脚本会复用其中的
+`.env.release` 文件；删除该目录会丢失自定义配置，包括公网访问地址和自动生成的匿名下载
+Cookie 密钥。
+
+如果部署遇到问题，请先使用运行时脚本输出的 `ps` 和 `logs` 生命周期命令检查状态与日志，
+再使用相同的运行时目录重试 `up`。如果确实需要重新生成配置，请在清除运行时目录之前备份
+`.env.release`。
 
 ### 前置要求
 
@@ -159,7 +164,7 @@ skillhub list
 ### 前置要求
 
 - Java 21+
-- Node.js 20+
+- 前端开发：Node.js 22.13+（22.x，默认）或 24.x；pnpm 版本以 `web/package.json` 为准。可在仓库根目录执行 `nvm install && nvm use` 选择默认版本。
 - Docker & Docker Compose
 - Make
 

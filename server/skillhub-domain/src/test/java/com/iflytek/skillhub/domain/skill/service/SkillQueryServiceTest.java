@@ -69,8 +69,7 @@ class SkillQueryServiceTest {
         visibilityChecker = new VisibilityChecker();
         skillSlugResolutionService = new SkillSlugResolutionService(skillRepository);
         skillLifecycleProjectionService = new SkillLifecycleProjectionService(skillVersionRepository);
-        service = new SkillQueryService(
-                namespaceRepository,
+        service = new SkillQueryService(org.mockito.Mockito.mock(com.iflytek.skillhub.domain.skill.SkillOwnerAccessPolicy.class), namespaceRepository,
                 skillRepository,
                 skillVersionRepository,
                 skillFileRepository,
@@ -83,6 +82,39 @@ class SkillQueryServiceTest {
                 skillLifecycleProjectionService,
                 userAccountRepository
         );
+    }
+
+    @Test
+    void removedOwnerSeesReadOnlyDetailAndRejoiningRestoresManagement() throws Exception {
+        var members = mock(com.iflytek.skillhub.domain.namespace.NamespaceMemberRepository.class);
+        service = new SkillQueryService(new SkillOwnerAccessPolicy(namespaceRepository, members), namespaceRepository,
+                skillRepository, skillVersionRepository, skillFileRepository, skillTagRepository,
+                objectStorageService, visibilityChecker, promotionRequestRepository, reviewTaskRepository,
+                skillSlugResolutionService, skillLifecycleProjectionService, userAccountRepository);
+        Namespace namespace = new Namespace("team", "Team", "admin");
+        setId(namespace, 1L);
+        Skill skill = new Skill(1L, "owned", "owner", SkillVisibility.NAMESPACE_ONLY);
+        setId(skill, 9L);
+        skill.setLatestVersionId(10L);
+        SkillVersion version = new SkillVersion(9L, "1.0.0", "owner");
+        setId(version, 10L);
+        version.setStatus(SkillVersionStatus.PUBLISHED);
+        when(namespaceRepository.findBySlug("team")).thenReturn(Optional.of(namespace));
+        when(namespaceRepository.findById(1L)).thenReturn(Optional.of(namespace));
+        when(skillRepository.findByNamespaceIdAndSlug(1L, "owned")).thenReturn(List.of(skill));
+        when(skillVersionRepository.findById(10L)).thenReturn(Optional.of(version));
+
+        var removed = service.getSkillDetail("team", "owned", "owner", Map.of());
+        assertTrue(removed.ownerReadOnly());
+        assertFalse(removed.canManageLifecycle());
+        assertFalse(removed.canSubmitPromotion());
+        assertEquals("1.0.0", removed.headlineVersion().version());
+        when(members.findByNamespaceIdAndUserId(1L, "owner"))
+                .thenReturn(Optional.of(mock(com.iflytek.skillhub.domain.namespace.NamespaceMember.class)));
+        var rejoined = service.getSkillDetail("team", "owned", "owner", Map.of(1L, NamespaceRole.MEMBER));
+        assertFalse(rejoined.ownerReadOnly());
+        assertTrue(rejoined.canManageLifecycle());
+        assertTrue(rejoined.canSubmitPromotion());
     }
 
     @Test
@@ -475,7 +507,7 @@ class SkillQueryServiceTest {
         when(namespaceRepository.findBySlug(namespaceSlug)).thenReturn(Optional.of(namespace));
         when(skillRepository.findByNamespaceIdAndSlug(1L, skillSlug)).thenReturn(List.of(skill));
         when(skillVersionRepository.findBySkillIdAndVersion(1L, version)).thenReturn(Optional.of(skillVersion));
-        when(skillFileRepository.findByVersionId(1L)).thenReturn(List.of(file));
+        when(skillFileRepository.findByVersionIdAndFilePath(1L, filePath)).thenReturn(Optional.of(file));
         when(objectStorageService.exists(file.getStorageKey())).thenReturn(true);
         when(objectStorageService.getObject(file.getStorageKey()))
                 .thenThrow(new UncheckedIOException(new java.io.FileNotFoundException(file.getStorageKey())));
@@ -485,6 +517,48 @@ class SkillQueryServiceTest {
 
         assertEquals("error.skill.file.notFound", ex.messageCode());
         assertArrayEquals(new Object[]{filePath}, ex.messageArgs());
+        verify(skillFileRepository, never()).findByVersionId(1L);
+    }
+
+    @Test
+    void testGetFileContentByVersionId_ShouldReadOnlySelectedFile() throws Exception {
+        SkillVersion version = new SkillVersion(1L, "1.0.0", "owner");
+        setId(version, 1L);
+        SkillFile file = new SkillFile(1L, "SKILL.md", 12L, "text/markdown", "hash", "skill-key");
+        when(skillVersionRepository.findById(1L)).thenReturn(Optional.of(version));
+        when(skillFileRepository.findByVersionIdAndFilePath(1L, "SKILL.md")).thenReturn(Optional.of(file));
+        when(objectStorageService.exists("skill-key")).thenReturn(true);
+        when(objectStorageService.getObject("skill-key")).thenReturn(new ByteArrayInputStream("# Skill".getBytes()));
+
+        try (InputStream content = service.getFileContentByVersionId(1L, "SKILL.md")) {
+            assertEquals("# Skill", new String(content.readAllBytes()));
+        }
+        verify(skillFileRepository, never()).findByVersionId(1L);
+        verify(objectStorageService, times(1)).exists("skill-key");
+    }
+
+    @Test
+    void testGetReviewSkillSnapshot_ShouldNotCheckEveryStoredFile() throws Exception {
+        Skill skill = new Skill(1L, "sample", "owner", SkillVisibility.PUBLIC);
+        setId(skill, 1L);
+        SkillVersion version = new SkillVersion(1L, "1.0.0", "owner");
+        setId(version, 2L);
+        version.setStatus(SkillVersionStatus.PENDING_REVIEW);
+        SkillFile documentation = new SkillFile(2L, "README.md", 8L, "text/markdown", "hash", "readme-key");
+        SkillFile other = new SkillFile(2L, "references/example.md", 8L, "text/markdown", "hash", "other-key");
+        when(skillVersionRepository.findById(2L)).thenReturn(Optional.of(version));
+        when(skillRepository.findById(1L)).thenReturn(Optional.of(skill));
+        when(userAccountRepository.findById("owner")).thenReturn(Optional.empty());
+        when(skillVersionRepository.findBySkillId(1L)).thenReturn(List.of(version));
+        when(skillFileRepository.findByVersionId(2L)).thenReturn(List.of(documentation, other));
+        when(objectStorageService.exists("readme-key")).thenReturn(true);
+        when(objectStorageService.getObject("readme-key")).thenReturn(new ByteArrayInputStream("# Sample".getBytes()));
+
+        SkillQueryService.ReviewSkillSnapshotDTO snapshot = service.getReviewSkillSnapshot(2L);
+
+        assertEquals(2, snapshot.files().size());
+        assertEquals("# Sample", snapshot.documentationContent());
+        verify(objectStorageService, never()).exists("other-key");
     }
 
     @Test
@@ -1051,7 +1125,6 @@ class SkillQueryServiceTest {
         when(skillRepository.findByNamespaceIdAndSlug(1L, skillSlug)).thenReturn(List.of(skill));
         when(skillVersionRepository.findById(11L)).thenReturn(Optional.of(published));
         when(promotionRequestRepository.findBySourceSkillIdAndStatus(1L, ReviewTaskStatus.PENDING)).thenReturn(Optional.empty());
-        when(promotionRequestRepository.findBySourceSkillIdAndStatus(1L, ReviewTaskStatus.APPROVED)).thenReturn(Optional.empty());
 
         SkillQueryService.SkillDetailDTO result = service.getSkillDetail(namespaceSlug, skillSlug, userId, userNsRoles);
 
@@ -1090,7 +1163,7 @@ class SkillQueryServiceTest {
     }
 
     @Test
-    void testGetSkillDetail_ShouldHidePromotionWhenSkillAlreadyPromoted() throws Exception {
+    void testGetSkillDetail_ShouldAllowSubmittingAnotherVersionAfterInitialPromotion() throws Exception {
         String namespaceSlug = "team-ns";
         String skillSlug = "team-skill";
         String userId = "owner-1";
@@ -1111,12 +1184,10 @@ class SkillQueryServiceTest {
         when(skillRepository.findByNamespaceIdAndSlug(1L, skillSlug)).thenReturn(List.of(skill));
         when(skillVersionRepository.findById(11L)).thenReturn(Optional.of(published));
         when(promotionRequestRepository.findBySourceSkillIdAndStatus(1L, ReviewTaskStatus.PENDING)).thenReturn(Optional.empty());
-        when(promotionRequestRepository.findBySourceSkillIdAndStatus(1L, ReviewTaskStatus.APPROVED))
-                .thenReturn(Optional.of(mock(com.iflytek.skillhub.domain.review.PromotionRequest.class)));
 
         SkillQueryService.SkillDetailDTO result = service.getSkillDetail(namespaceSlug, skillSlug, userId, userNsRoles);
 
-        assertFalse(result.canSubmitPromotion());
+        assertTrue(result.canSubmitPromotion());
     }
 
     @Test
@@ -1195,6 +1266,26 @@ class SkillQueryServiceTest {
 
         assertThrows(DomainForbiddenException.class, () ->
                 service.getSkillDetail(namespaceSlug, skillSlug, userId, Map.of(), Set.of("SUPER_ADMIN")));
+    }
+
+    @Test
+    void testGetSkillDetail_ShouldRejectAnonymousTeamPrivateAndNamespaceOnlySkills() throws Exception {
+        Namespace namespace = new Namespace("team", "Team", "owner-1");
+        setId(namespace, 1L);
+        Skill privateSkill = new Skill(1L, "private", "owner-1", SkillVisibility.PRIVATE);
+        privateSkill.setLatestVersionId(11L);
+        Skill namespaceOnlySkill = new Skill(1L, "team-only", "owner-1", SkillVisibility.NAMESPACE_ONLY);
+        namespaceOnlySkill.setLatestVersionId(12L);
+
+        when(namespaceRepository.findBySlug("team")).thenReturn(Optional.of(namespace));
+        when(skillRepository.findByNamespaceIdAndSlug(1L, "private")).thenReturn(List.of(privateSkill));
+        when(skillRepository.findByNamespaceIdAndSlug(1L, "team-only")).thenReturn(List.of(namespaceOnlySkill));
+
+        assertThrows(DomainForbiddenException.class, () ->
+                service.getSkillDetail("team", "private", null, Map.of()));
+        assertThrows(DomainForbiddenException.class, () ->
+                service.getSkillDetail("team", "team-only", null, Map.of()));
+        verifyNoInteractions(skillVersionRepository);
     }
 
     @Test
@@ -1519,6 +1610,65 @@ class SkillQueryServiceTest {
 
         assertEquals(List.of("1.0.0"),
                 result.getContent().stream().map(SkillVersion::getVersion).toList());
+    }
+
+    @Test
+    void downloadableVersionsShouldFilterBeforePaginationAndSortGlobally() throws Exception {
+        Namespace namespace = new Namespace("team", "Team", "owner-1");
+        setId(namespace, 1L);
+        Skill skill = new Skill(1L, "demo", "owner-1", SkillVisibility.PUBLIC);
+        setId(skill, 1L);
+        skill.setStatus(SkillStatus.ACTIVE);
+        SkillVersion oldest = downloadableVersion(10L, "1.0.0", "2026-01-01T00:00:00Z");
+        SkillVersion newest = downloadableVersion(11L, "2.0.0", "2026-10-01T00:00:00Z");
+        SkillVersion tied = downloadableVersion(12L, "2.0.1", "2026-10-01T00:00:00Z");
+        SkillVersion unavailable = downloadableVersion(13L, "3.0.0", "2026-10-10T00:00:00Z");
+        unavailable.setDownloadReady(false);
+        SkillVersion yanked = downloadableVersion(14L, "4.0.0", "2026-10-11T00:00:00Z");
+        yanked.setYankedAt(Instant.parse("2026-10-12T00:00:00Z"));
+        SkillVersion undated = downloadableVersion(15L, "0.1.0", null);
+        skill.setLatestVersionId(11L);
+        when(namespaceRepository.findBySlug("team")).thenReturn(Optional.of(namespace));
+        when(skillRepository.findByNamespaceIdAndSlug(1L, "demo")).thenReturn(List.of(skill));
+        when(skillVersionRepository.findBySkillIdAndStatus(1L, SkillVersionStatus.PUBLISHED))
+                .thenReturn(List.of(oldest, unavailable, newest, yanked, undated, tied));
+
+        Page<SkillVersion> first = service.listVersions("team", "demo", null, Map.of(), PageRequest.of(0, 2), true);
+        Page<SkillVersion> second = service.listVersions("team", "demo", "owner-1", Map.of(), PageRequest.of(1, 2), true);
+        Page<SkillVersion> empty = service.listVersions("team", "demo", null, Map.of(), PageRequest.of(2, 2), true);
+
+        assertEquals(List.of("2.0.1", "2.0.0"), first.map(SkillVersion::getVersion).getContent());
+        assertEquals(List.of("1.0.0", "0.1.0"), second.map(SkillVersion::getVersion).getContent());
+        assertEquals(4, first.getTotalElements());
+        assertEquals(4, second.getTotalElements());
+        assertTrue(empty.isEmpty());
+        assertEquals(4, empty.getTotalElements());
+        verify(skillVersionRepository, never()).findBySkillId(1L);
+        verifyNoInteractions(objectStorageService);
+    }
+
+    @Test
+    void downloadableVersionsShouldPreservePrivateSkillAuthorization() throws Exception {
+        Namespace namespace = new Namespace("team", "Team", "owner-1");
+        setId(namespace, 1L);
+        Skill skill = new Skill(1L, "demo", "owner-1", SkillVisibility.PRIVATE);
+        setId(skill, 1L);
+        skill.setStatus(SkillStatus.ACTIVE);
+        when(namespaceRepository.findBySlug("team")).thenReturn(Optional.of(namespace));
+        when(skillRepository.findByNamespaceIdAndSlug(1L, "demo")).thenReturn(List.of(skill));
+
+        assertThrows(DomainBadRequestException.class, () -> service.listVersions(
+                "team", "demo", null, Map.of(), PageRequest.of(0, 20), true));
+        verifyNoInteractions(skillVersionRepository, objectStorageService);
+    }
+
+    private SkillVersion downloadableVersion(Long id, String name, String publishedAt) throws Exception {
+        SkillVersion version = new SkillVersion(1L, name, "owner-1");
+        setId(version, id);
+        version.setStatus(SkillVersionStatus.PUBLISHED);
+        version.setDownloadReady(true);
+        version.setPublishedAt(publishedAt == null ? null : Instant.parse(publishedAt));
+        return version;
     }
 
     private void setId(Object entity, Long id) throws Exception {

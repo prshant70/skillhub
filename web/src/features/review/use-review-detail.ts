@@ -9,8 +9,8 @@ async function getReviewDetail(taskId: number): Promise<ReviewTask> {
   return reviewApi.get(taskId)
 }
 
-async function getReviewSkillDetail(taskId: number): Promise<ReviewSkillDetail> {
-  return reviewApi.getSkillDetail(taskId)
+async function getReviewSkillDetail(taskId: number, includeDocumentation: boolean): Promise<ReviewSkillDetail> {
+  return reviewApi.getSkillDetail(taskId, includeDocumentation)
 }
 
 /**
@@ -39,19 +39,27 @@ export function useReviewDetail(taskId: number) {
   })
 }
 
-export function useReviewSkillDetail(taskId: number, enabled = true) {
+export function useReviewSkillDetail(taskId: number, enabled = true, includeDocumentation = true) {
   return useQuery({
-    queryKey: ['reviews', taskId, 'skill-detail'],
-    queryFn: () => getReviewSkillDetail(taskId),
+    queryKey: ['reviews', taskId, 'skill-detail', includeDocumentation],
+    queryFn: () => getReviewSkillDetail(taskId, includeDocumentation),
     enabled: enabled && !!taskId,
   })
 }
 
-export function useReviewAttempts(taskId: number) {
+export function useGithubSyncReviewSource(taskId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['reviews', taskId, 'sync-source'],
+    queryFn: () => reviewApi.getSyncSource(taskId),
+    enabled: enabled && !!taskId,
+  })
+}
+
+export function useReviewAttempts(taskId: number, enabled = true) {
   return useQuery({
     queryKey: ['reviews', taskId, 'attempts'],
     queryFn: () => reviewApi.listAttempts(taskId),
-    enabled: !!taskId,
+    enabled: enabled && !!taskId,
   })
 }
 
@@ -65,9 +73,13 @@ export function useApproveReview(callbacks?: { onSuccess?: () => void; onError?:
   return useMutation({
     mutationFn: ({ taskId, comment }: { taskId: number; comment?: string }) =>
       approveReview(taskId, comment),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reviews'] })
-      queryClient.invalidateQueries({ queryKey: ['governance'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['reviews'] }),
+        queryClient.invalidateQueries({ queryKey: ['governance'] }),
+        queryClient.invalidateQueries({ queryKey: ['skills'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['skill-avatar'] }),
+      ])
       callbacks?.onSuccess?.()
     },
     onError: callbacks?.onError,
@@ -83,9 +95,13 @@ export function useRejectReview(callbacks?: { onSuccess?: () => void; onError?: 
   return useMutation({
     mutationFn: ({ taskId, comment }: { taskId: number; comment: string }) =>
       rejectReview(taskId, comment),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reviews'] })
-      queryClient.invalidateQueries({ queryKey: ['governance'] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['reviews'] }),
+        queryClient.invalidateQueries({ queryKey: ['governance'] }),
+        queryClient.invalidateQueries({ queryKey: ['skills'], refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: ['skill-avatar'] }),
+      ])
       callbacks?.onSuccess?.()
     },
     onError: callbacks?.onError,

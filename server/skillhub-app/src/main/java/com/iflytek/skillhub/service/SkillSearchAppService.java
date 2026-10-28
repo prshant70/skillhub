@@ -42,6 +42,7 @@ public class SkillSearchAppService {
     private final ComplianceSnapshotProjectionService complianceSnapshotProjectionService;
     private final RbacService rbacService;
     private final UserAccountRepository userAccountRepository;
+    private final SkillSuiteMembershipProjectionService suiteMembershipProjection;
 
     public SkillSearchAppService(
             SearchQueryService searchQueryService,
@@ -62,7 +63,6 @@ public class SkillSearchAppService {
         );
     }
 
-    @Autowired
     public SkillSearchAppService(
             SearchQueryService searchQueryService,
             SkillRepository skillRepository,
@@ -72,6 +72,23 @@ public class SkillSearchAppService {
             ComplianceSnapshotProjectionService complianceSnapshotProjectionService,
             RbacService rbacService,
             UserAccountRepository userAccountRepository) {
+        this(searchQueryService, skillRepository, namespaceRepository, namespaceService,
+                skillLifecycleProjectionService, complianceSnapshotProjectionService, rbacService,
+                userAccountRepository, null);
+    }
+
+    @Autowired
+    public SkillSearchAppService(
+            SearchQueryService searchQueryService,
+            SkillRepository skillRepository,
+            NamespaceRepository namespaceRepository,
+            NamespaceService namespaceService,
+            SkillLifecycleProjectionService skillLifecycleProjectionService,
+            ComplianceSnapshotProjectionService complianceSnapshotProjectionService,
+            RbacService rbacService,
+            UserAccountRepository userAccountRepository,
+            SkillSuiteMembershipProjectionService suiteMembershipProjection) {
+        this.suiteMembershipProjection = suiteMembershipProjection;
         this.searchQueryService = searchQueryService;
         this.skillRepository = skillRepository;
         this.namespaceRepository = namespaceRepository;
@@ -187,7 +204,10 @@ public class SkillSearchAppService {
                 normalizeLabelSlugs(labelSlugs),
                 requireInstallableLatest
         ));
-        List<SkillSummaryResponse> pageItems = mapVisibleSkillSummaries(result.skillIds());
+        List<SkillSummaryResponse> pageItems = mapVisibleSkillSummaries(result.skillIds(), scope.userId());
+        if (suiteMembershipProjection != null) {
+            pageItems = suiteMembershipProjection.enrich(pageItems, scope.userId());
+        }
         return new SearchResponse(pageItems, result.total(), page, size);
     }
 
@@ -202,7 +222,7 @@ public class SkillSearchAppService {
                 .toList();
     }
 
-    private List<SkillSummaryResponse> mapVisibleSkillSummaries(List<Long> skillIds) {
+    private List<SkillSummaryResponse> mapVisibleSkillSummaries(List<Long> skillIds, String userId) {
         if (skillIds.isEmpty()) {
             return List.of();
         }
@@ -235,7 +255,8 @@ public class SkillSearchAppService {
                         skill,
                         namespaceSlugsById,
                         ownersById,
-                        projectionsBySkillId.get(skill.getId())
+                        projectionsBySkillId.get(skill.getId()),
+                        userId
                 ))
                 .toList();
     }
@@ -244,7 +265,8 @@ public class SkillSearchAppService {
             Skill skill,
             Map<Long, String> namespaceSlugsById,
             Map<String, UserAccount> ownersById,
-            SkillLifecycleProjectionService.Projection projection) {
+            SkillLifecycleProjectionService.Projection projection,
+            String userId) {
         String namespaceSlug = namespaceSlugsById.get(skill.getNamespaceId());
         UserAccount owner = ownersById.get(skill.getOwnerId());
         SkillLifecycleProjectionService.VersionProjection headlineVersion = projection.headlineVersion();
@@ -274,7 +296,9 @@ public class SkillSearchAppService {
                 headlineVersion != null
                         ? complianceSnapshotProjectionService.fromParsedMetadataJson(headlineVersion.parsedMetadataJson())
                         : null,
-                null
+                null,
+                skill.getVisibility() == com.iflytek.skillhub.domain.skill.SkillVisibility.PRIVATE
+                        && !skill.getOwnerId().equals(userId) ? null : SkillAvatarUrls.current(skill, namespaceSlug)
         );
     }
 
@@ -286,7 +310,9 @@ public class SkillSearchAppService {
         return new com.iflytek.skillhub.dto.SkillLifecycleVersionResponse(
                 projection.id(),
                 projection.version(),
-                projection.status()
+                projection.status(),
+                projection.displayName(),
+                projection.summary(), projection.syncRevision()
         );
     }
 

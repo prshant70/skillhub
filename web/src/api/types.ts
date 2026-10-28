@@ -23,6 +23,58 @@ export interface AuthMethod {
   actionUrl: string
 }
 
+export interface LocalAuthCapabilities {
+  passwordLoginEnabled: boolean
+  selfRegistrationEnabled: boolean
+  registrationAvailable: boolean
+}
+
+export interface SystemAuthSettings {
+  passwordLoginEnabled: boolean
+  selfRegistrationEnabled: boolean
+  version: number
+  updatedAt: string
+}
+
+export interface AvatarReviewSettings {
+  machineEnabled: boolean
+  manualEnabled: boolean
+  version: number
+  updatedAt: string
+}
+
+export interface SkillAvatarStatus {
+  avatarUrl: string | null
+  candidateId: number | null
+  candidateStatus: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'SUPERSEDED' | 'REMOVED' | null
+  machineStatus: 'SKIPPED' | 'PENDING' | 'PROCESSING' | 'PASSED' | 'BLOCKED' | 'ERROR' | null
+  machineNextRetryAt: string | null
+  automaticRetryExhausted: boolean
+  reviewStatus: 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPEAL_PENDING' | null
+  reviewReason: string | null
+  candidateUrl: string | null
+  namespace: string
+  slug: string
+}
+
+export interface ExternalRoleGrantRule {
+  id: number
+  providerCode: string
+  email: string
+  roleCode: string
+  status: 'ACTIVE' | 'DISABLED' | 'CONSUMED'
+  matchedSubject?: string | null
+  grantedUserId?: string | null
+  grantedAt?: string | null
+  version: number
+  updatedAt: string
+}
+
+export interface PlatformRole {
+  code: string
+  name: string
+}
+
 export type ApiToken = Omit<components['schemas']['TokenSummaryResponse'], 'id' | 'name' | 'tokenPrefix' | 'createdAt'> & {
   id: number
   name: string
@@ -84,13 +136,18 @@ export interface MergeInitiateRequest {
 export interface MergeInitiateResponse {
   mergeRequestId: number
   secondaryUserId: string
-  verificationToken: string
+  expiresAt: string
+}
+
+export interface MergeApprovalDetails {
+  mergeRequestId: number
+  primaryUserId: string
+  primaryDisplayName: string
   expiresAt: string
 }
 
 export interface MergeVerifyRequest {
   mergeRequestId: number
-  verificationToken: string
 }
 
 export interface MergeConfirmRequest {
@@ -196,6 +253,8 @@ export interface BatchMemberResponse {
 
 // Skill types
 export interface SkillSummary {
+  hasVisibleSuites?: boolean
+  managementState?: components['schemas']['ManagementState'] | null
   id: number
   slug: string
   displayName: string
@@ -216,6 +275,7 @@ export interface SkillSummary {
   ownerPreviewVersion?: SkillLifecycleVersion
   resolutionMode?: string
   complianceSnapshot?: ComplianceSnapshot
+  avatarUrl?: string | null
 }
 
 export type LabelItem = Omit<components['schemas']['SkillLabelDto'], 'slug' | 'type' | 'displayName'> & {
@@ -249,9 +309,12 @@ export interface AdminLabelInput {
 }
 
 export interface SkillLifecycleVersion {
+  displayName?: string
+  summary?: string
   id: number
   version: string
   status: string
+  syncRevision?: number | null
 }
 
 export interface ComplianceEvidence {
@@ -290,11 +353,21 @@ export type SkillSuiteReference = Omit<
 }
 
 type GeneratedSkillDetail = components['schemas']['SkillDetailResponse']
+export interface GithubSkillSource {
+  ownerLogin: string
+  repositoryName: string
+  skillPath: string
+  commitSha: string
+  syncRevision: number
+  licenseStatus: string
+  licenseDocuments: Array<{ scope: string; path: string; bundled: boolean }>
+}
 export type SkillDetail = Omit<
   RequiredGenerated<
     GeneratedSkillDetail,
     | 'ownerId'
     | 'ownerDisplayName'
+    | 'ownerReadOnly'
     | 'summary'
     | 'subscriptionCount'
     | 'ratingAvg'
@@ -307,14 +380,16 @@ export type SkillDetail = Omit<
     | 'entryForSuites'
     | 'memberOfSuites'
   >,
-  'labels' | 'headlineVersion' | 'publishedVersion' | 'ownerPreviewVersion' | 'entryForSuites' | 'memberOfSuites'
+  'avatarUrl' | 'labels' | 'headlineVersion' | 'publishedVersion' | 'ownerPreviewVersion' | 'entryForSuites' | 'memberOfSuites' | 'githubSource'
 > & {
+  avatarUrl?: string | null
   labels?: LabelItem[]
   headlineVersion?: SkillLifecycleVersion
   publishedVersion?: SkillLifecycleVersion
   ownerPreviewVersion?: SkillLifecycleVersion
   entryForSuites?: SkillSuiteReference[]
   memberOfSuites?: PagedResponse<SkillSuiteReference>
+  githubSource?: GithubSkillSource | null
 }
 
 export interface SubmitPromotionRequest {
@@ -323,9 +398,34 @@ export interface SubmitPromotionRequest {
   targetNamespaceId: number
 }
 
+export interface PromotionSourceState {
+  requestKind: 'INITIAL' | 'UPDATE' | 'PENDING'
+  targetSkillId: number | null
+  targetCurrentVersion: string | null
+  pendingPromotionId: number | null
+}
+
+export interface PromotionRevocation {
+  id: number
+  initialPromotionRequestId: number
+  sourceSkillId: number
+  targetSkillId: number
+  sourceNamespaceId: number
+  targetNamespaceId: number
+  skillSlug: string
+  status: PromotionStatus
+  reason: string | null
+  submittedBy: string
+  reviewedBy: string | null
+  reviewComment: string | null
+  submittedAt: string
+  reviewedAt: string | null
+}
+
 export interface SkillVersion {
   id: number
   version: string
+  syncRevision?: number | null
   status: string
   changelog?: string
   fileCount: number
@@ -523,8 +623,8 @@ export interface ReviewTask {
   skillVersionId: number | null
   namespace: string
   skillSlug?: string | null
-  version: string
-  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  version: string | null
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED'
   submittedBy: string
   submittedByName?: string
   reviewedBy?: string
@@ -532,10 +632,63 @@ export interface ReviewTask {
   reviewComment?: string
   submittedAt: string
   reviewedAt?: string
-  subjectType?: 'SKILL_VERSION' | 'SUITE_VERSION'
+  subjectType?: 'SKILL_VERSION' | 'SUITE_VERSION' | 'SKILL_METADATA'
   subjectId?: number | null
   subjectVersionId?: number | null
   subjectSlug?: string | null
+  avatarCandidateId?: number | null
+  previousVisibility?: string
+  requestedVisibility?: string
+  avatarRemoval?: boolean
+  originType?: 'USER' | 'GITHUB_SYNC'
+}
+
+export interface GithubSyncReviewSource {
+  ingestionId: string
+  runId: string
+  sourceId?: number | null
+  repositoryId: number
+  ownerLogin: string
+  repositoryName: string
+  commitSha: string
+  skillPath: string
+  contentSha256: string
+  syncRevision: number
+  ingestionStatus: string
+  receivedAt: string
+  baseVersionId?: number | null
+  fileChanges: Array<{
+    path: string
+    changeType: 'ADDED' | 'MODIFIED' | 'REMOVED'
+    oldSize?: number | null
+    newSize?: number | null
+    oldSha256?: string | null
+    newSha256?: string | null
+  }>
+  evidence: {
+    status: string
+    documents: Array<{
+      scope: string
+      path: string
+      gitSha?: string | null
+      sha256?: string | null
+      size: number
+      bundled: boolean
+      text?: string | null
+    }>
+  }
+}
+
+export type GithubSyncReviewQueueItem = Omit<components['schemas']['GithubSyncReviewQueueItemResponse'],
+  'review' | 'ingestionId' | 'runId' | 'repositoryId' | 'skillPath' | 'commitSha'> & {
+  review: ReviewTask
+  ingestionId: string
+  runId: string
+  repositoryId: number
+  ownerLogin?: string | null
+  repositoryName?: string | null
+  skillPath: string
+  commitSha: string
 }
 
 export interface ReviewProgress extends Pick<components['schemas']['ReviewProgressResponse'],
@@ -567,13 +720,25 @@ export interface ReviewProgressPage {
 }
 
 export interface ReviewSkillDetail {
+  visibilityChange?: components['schemas']['VisibilityChange']
   skill: SkillDetail
   versions: SkillVersion[]
   files: SkillFile[]
-  documentationPath?: string
-  documentationContent?: string
-  downloadUrl: string
-  activeVersion: string
+  documentationPath?: string | null
+  documentationContent?: string | null
+  downloadUrl: string | null
+  activeVersion: string | null
+  avatarChange?: ReviewAvatarChange | null
+}
+
+export interface ReviewAvatarChange {
+  candidateId: number | null
+  currentAvatarUrl: string | null
+  candidatePreviewUrl: string | null
+  machineStatus: string | null
+  reviewStatus: string | null
+  readyForApproval: boolean
+  removal: boolean
 }
 
 export type PromotionStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
@@ -582,6 +747,9 @@ export type PromotionSortBy = 'reviewedAt'
 
 export interface PromotionTask {
   id: number
+  requestKind?: 'INITIAL' | 'UPDATE'
+  targetCurrentVersion?: string | null
+  targetVersionId?: number | null
   sourceSkillId: number
   sourceSkillDisplayName: string
   sourceSkillSummary?: string | null
@@ -709,4 +877,10 @@ export interface NotificationPreferenceItem {
 
 export interface NotificationUnreadCount {
   count: number
+}
+
+/** Read-only, token-free invitation history from the generated API contract. */
+export type NamespaceInvitationHistory = Required<components['schemas']['InvitationHistoryItem']>
+export type NamespaceInvitationHistoryPage = Omit<Required<components['schemas']['InvitationHistoryPage']>, 'items'> & {
+  items: NamespaceInvitationHistory[]
 }

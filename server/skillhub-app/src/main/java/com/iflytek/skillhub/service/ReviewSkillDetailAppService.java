@@ -1,5 +1,15 @@
 package com.iflytek.skillhub.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.iflytek.skillhub.domain.skill.metadata.SkillMetadata;
+import com.iflytek.skillhub.domain.review.ReviewSubjectType;
+import com.iflytek.skillhub.domain.shared.exception.DomainBadRequestException;
+import com.iflytek.skillhub.domain.skill.SkillAvatarCandidate;
+import com.iflytek.skillhub.domain.skill.SkillRepository;
+import com.iflytek.skillhub.infra.jpa.SkillAvatarCandidateJpaRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.iflytek.skillhub.auth.rbac.RbacService;
 import com.iflytek.skillhub.domain.namespace.Namespace;
 import com.iflytek.skillhub.domain.namespace.NamespaceRepository;
@@ -36,6 +46,20 @@ public class ReviewSkillDetailAppService {
     private final SkillQueryService skillQueryService;
     private final SkillDownloadService skillDownloadService;
     private final ComplianceSnapshotProjectionService complianceSnapshotProjectionService;
+    private final ObjectReader metadataReader;
+    private com.iflytek.skillhub.domain.security.SecurityAuditRepository securityAudits;
+    @Autowired
+    public void configureSecurityAudits(com.iflytek.skillhub.domain.security.SecurityAuditRepository audits) {
+        this.securityAudits = audits;
+    }
+    private SkillRepository skills;
+    private SkillAvatarCandidateJpaRepository candidates;
+
+    @Autowired
+    public void configureAvatars(SkillRepository skills,
+            SkillAvatarCandidateJpaRepository candidates) {
+        this.skills = skills; this.candidates = candidates;
+    }
 
     public ReviewSkillDetailAppService(ReviewTaskRepository reviewTaskRepository,
                                        NamespaceRepository namespaceRepository,
@@ -44,6 +68,21 @@ public class ReviewSkillDetailAppService {
                                        SkillQueryService skillQueryService,
                                        SkillDownloadService skillDownloadService,
                                        ComplianceSnapshotProjectionService complianceSnapshotProjectionService) {
+        this(reviewTaskRepository, namespaceRepository, reviewService, rbacService, skillQueryService,
+                skillDownloadService, complianceSnapshotProjectionService, new ObjectMapper());
+    }
+
+    @Autowired
+    public ReviewSkillDetailAppService(ReviewTaskRepository reviewTaskRepository,
+                                       NamespaceRepository namespaceRepository,
+                                       ReviewService reviewService,
+                                       RbacService rbacService,
+                                       SkillQueryService skillQueryService,
+                                       SkillDownloadService skillDownloadService,
+                                       ComplianceSnapshotProjectionService complianceSnapshotProjectionService,
+                                       ObjectMapper objectMapper) {
+        this.metadataReader = objectMapper.readerFor(SkillMetadata.class)
+                .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.reviewTaskRepository = reviewTaskRepository;
         this.namespaceRepository = namespaceRepository;
         this.reviewService = reviewService;
@@ -57,16 +96,42 @@ public class ReviewSkillDetailAppService {
                                                           String userId,
                                                           Map<Long, NamespaceRole> userNsRoles) {
         ReviewAccessContext context = loadAuthorizedContext(reviewId, userId, userNsRoles);
+        if (context.task().getSubjectType() == ReviewSubjectType.SKILL_METADATA && context.task().getRequestedVisibility() == null) {
+            return metadataDetail(context);
+        }
         SkillQueryService.ReviewSkillSnapshotDTO snapshot =
-                skillQueryService.getReviewSkillSnapshot(context.task().getSkillVersionId());
+                skillQueryService.getReviewSkillSnapshot(reviewVersionId(context.task()));
+        return toResponse(reviewId, context, snapshot);
+    }
+
+    public ReviewSkillDetailResponse getReviewSkillDetail(Long reviewId,
+                                                          String userId,
+                                                          Map<Long, NamespaceRole> userNsRoles,
+                                                          boolean includeDocumentation) {
+        if (includeDocumentation) {
+            return getReviewSkillDetail(reviewId, userId, userNsRoles);
+        }
+        ReviewAccessContext context = loadAuthorizedContext(reviewId, userId, userNsRoles);
+        if (context.task().getSubjectType() == ReviewSubjectType.SKILL_METADATA && context.task().getRequestedVisibility() == null) {
+            return metadataDetail(context);
+        }
+        SkillQueryService.ReviewSkillSnapshotDTO snapshot =
+                skillQueryService.getReviewSkillSnapshot(reviewVersionId(context.task()), false);
+
+        return toResponse(reviewId, context, snapshot);
+    }
+
+    private ReviewSkillDetailResponse toResponse(Long reviewId, ReviewAccessContext context,
+                                                 SkillQueryService.ReviewSkillSnapshotDTO snapshot) {
+        SkillLifecycleVersionResponse activeVersion = toLifecycleVersion(snapshot.activeVersion());
 
         SkillDetailResponse skill = new SkillDetailResponse(
                 snapshot.skill().getId(),
                 snapshot.skill().getSlug(),
-                snapshot.skill().getDisplayName(),
+                activeVersion.displayName() != null ? activeVersion.displayName() : snapshot.skill().getDisplayName(),
                 snapshot.skill().getOwnerId(),
                 snapshot.ownerDisplayName(),
-                snapshot.skill().getSummary(),
+                activeVersion.summary() != null ? activeVersion.summary() : snapshot.skill().getSummary(),
                 snapshot.skill().getVisibility().name(),
                 snapshot.skill().getStatus().name(),
                 snapshot.skill().getDownloadCount(),
@@ -87,13 +152,15 @@ public class ReviewSkillDetailAppService {
                 null,
                 "REVIEW_TASK",
                 List.of(),
-                new PageResponse<>(List.of(), 0, 0, 20)
+                new PageResponse<>(List.of(), 0, 0, 20),
+                SkillAvatarUrls.current(snapshot.skill(), context.namespace().getSlug()), false, null
         );
 
         List<SkillVersionResponse> versions = snapshot.versions().stream()
                 .map(version -> new SkillVersionResponse(
                         version.getId(),
                         version.getVersion(),
+                        version.getGithubSyncRevision(),
                         version.getStatus().name(),
                         version.getChangelog(),
                         version.getFileCount(),
@@ -116,7 +183,8 @@ public class ReviewSkillDetailAppService {
                 snapshot.documentationPath(),
                 snapshot.documentationContent(),
                 "/api/v1/reviews/" + reviewId + "/download",
-                snapshot.activeVersion().getVersion()
+                snapshot.activeVersion().getVersion(),
+                avatarChange(context), visibilityChange(context.task())
         );
     }
 
@@ -124,8 +192,12 @@ public class ReviewSkillDetailAppService {
                                                                     String userId,
                                                                     Map<Long, NamespaceRole> userNsRoles) {
         ReviewAccessContext context = loadAuthorizedContext(reviewId, userId, userNsRoles);
+        if (reviewVersionId(context.task()) == null) {
+            throw new DomainBadRequestException("review.metadata.no_package");
+        }
         SkillQueryService.ReviewSkillSnapshotDTO snapshot =
-                skillQueryService.getReviewSkillSnapshot(context.task().getSkillVersionId());
+                skillQueryService.getReviewSkillSnapshot(reviewVersionId(context.task()), false);
+
         return skillDownloadService.downloadReviewVersion(snapshot.skill(), snapshot.activeVersion());
     }
 
@@ -138,11 +210,69 @@ public class ReviewSkillDetailAppService {
                                             String filePath,
                                             String userId,
                                             Map<Long, NamespaceRole> userNsRoles) {
+        return getReviewFileContent(reviewId, filePath, userId, userNsRoles, false);
+    }
+
+    public InputStream getReviewFileContent(Long reviewId,
+                                            String filePath,
+                                            String userId,
+                                            Map<Long, NamespaceRole> userNsRoles,
+                                            boolean preview) {
         ReviewAccessContext context = loadAuthorizedContext(reviewId, userId, userNsRoles);
-        return skillQueryService.getFileContentByVersionId(
-                context.task().getSkillVersionId(),
-                filePath
-        );
+        if (reviewVersionId(context.task()) == null) {
+            throw new DomainBadRequestException("review.metadata.no_package");
+        }
+        return preview
+                ? skillQueryService.getFilePreviewContentByVersionId(reviewVersionId(context.task()), filePath)
+                : skillQueryService.getFileContentByVersionId(reviewVersionId(context.task()), filePath);
+    }
+
+    private ReviewSkillDetailResponse.AvatarChange avatarChange(ReviewAccessContext context) {
+        ReviewTask task = context.task();
+        if (task.getAvatarCandidateId() == null && !task.isAvatarRemoval()) { return null; }
+        var skill = skills.findById(task.getSkillId()).orElseThrow(() -> new DomainNotFoundException("skill.not_found", task.getSkillId()));
+        var candidate = task.getAvatarCandidateId() == null ? null : candidates.findById(task.getAvatarCandidateId()).orElse(null);
+        boolean current = candidate != null && candidate.getStatus() == SkillAvatarCandidate.Status.PENDING
+                && java.util.Objects.equals(skill.getPendingAvatarId(), candidate.getId());
+        boolean removalReady = task.isAvatarRemoval()
+                && java.util.Objects.equals(skill.getActiveAvatarId(), task.getAvatarRemovalActiveId())
+                && java.util.Objects.equals(skill.getPendingAvatarId(), task.getAvatarRemovalPendingId());
+        boolean ready = removalReady || !task.isAvatarRemoval() && current && (!candidate.isMachineEnabled()
+                || candidate.getMachineStatus() == SkillAvatarCandidate.MachineStatus.PASSED
+                || candidate.getMachineStatus() == SkillAvatarCandidate.MachineStatus.BLOCKED
+                    && (candidate.isManualEnabled() || candidate.getReviewStatus() == SkillAvatarCandidate.ReviewStatus.APPEAL_PENDING));
+        return new ReviewSkillDetailResponse.AvatarChange(task.getAvatarCandidateId(),
+                SkillAvatarUrls.current(skill, context.namespace().getSlug()),
+                candidate == null || candidate.getObjectKey() == null ? null : SkillAvatarUrls.candidate(context.namespace().getSlug(), skill, candidate.getId()),
+                candidate == null ? null : candidate.getMachineStatus().name(),
+                candidate == null ? null : candidate.getReviewStatus().name(), ready, task.isAvatarRemoval());
+    }
+
+    private ReviewSkillDetailResponse metadataDetail(ReviewAccessContext context) {
+        var skill = skills.findById(context.task().getSkillId()).orElseThrow(() -> new DomainNotFoundException("skill.not_found", context.task().getSkillId()));
+        SkillDetailResponse detail = new SkillDetailResponse(skill.getId(), skill.getSlug(), skill.getDisplayName(),
+                skill.getOwnerId(), null, skill.getSummary(), skill.getVisibility().name(), skill.getStatus().name(),
+                skill.getDownloadCount(), skill.getStarCount(), skill.getSubscriptionCount(), skill.getRatingAvg(),
+                skill.getRatingCount(), skill.isHidden(), context.namespace().getSlug(), List.of(), false, false,
+                false, false, null, null, null, null, "REVIEW_TASK", List.of(), new PageResponse<>(List.of(), 0, 0, 20),
+                SkillAvatarUrls.current(skill, context.namespace().getSlug()));
+        return new ReviewSkillDetailResponse(detail, List.of(), List.of(), null, null, null, null,
+                avatarChange(context), visibilityChange(context.task()));
+    }
+
+    private Long reviewVersionId(ReviewTask task) {
+        return task.getRequestedVisibility() != null ? task.getVisibilityVersionId() : task.getSkillVersionId();
+    }
+
+    private ReviewSkillDetailResponse.VisibilityChange visibilityChange(ReviewTask task) {
+        if (task.getRequestedVisibility() == null) { return null; }
+        var scan = securityAudits.findLatestActiveByVersionIdAndScannerType(task.getVisibilityVersionId(),
+                com.iflytek.skillhub.domain.security.ScannerType.SKILL_SCANNER)
+                .filter(audit -> java.util.Objects.equals(task.getVisibilityScanTaskId(), audit.getTaskId()));
+        String status = scan.isEmpty() ? "FAILED" : scan.get().getScannedAt() == null ? "PENDING"
+                : scan.get().getFailureReason() == null && Boolean.TRUE.equals(scan.get().getIsSafe()) ? "PASSED" : "FAILED";
+        return new ReviewSkillDetailResponse.VisibilityChange(task.getPreviousVisibility().name(),
+                task.getRequestedVisibility().name(), status, "PASSED".equals(status));
     }
 
     private ReviewAccessContext loadAuthorizedContext(Long reviewId,
@@ -171,7 +301,16 @@ public class ReviewSkillDetailAppService {
     }
 
     private SkillLifecycleVersionResponse toLifecycleVersion(SkillVersion version) {
-        return new SkillLifecycleVersionResponse(version.getId(), version.getVersion(), version.getStatus().name());
+        SkillMetadata metadata = null;
+        if (version.getParsedMetadataJson() != null) {
+            try {
+                metadata = metadataReader.readValue(version.getParsedMetadataJson());
+            } catch (java.io.IOException ignored) {
+                // Missing or malformed legacy snapshots retain the existing container fallback.
+            }
+        }
+        return new SkillLifecycleVersionResponse(version.getId(), version.getVersion(), version.getStatus().name(),
+                metadata == null ? null : metadata.displayName(), metadata == null ? null : metadata.description(), version.getGithubSyncRevision());
     }
 
     private record ReviewAccessContext(ReviewTask task, Namespace namespace) {}

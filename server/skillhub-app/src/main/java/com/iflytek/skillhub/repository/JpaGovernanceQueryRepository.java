@@ -161,14 +161,23 @@ public class JpaGovernanceQueryRepository implements GovernanceQueryRepository {
 
     private PromotionReadBundle loadPromotionBundle(List<PromotionRequest> requests) {
         List<Long> sourceSkillIds = distinct(requests.stream().map(PromotionRequest::getSourceSkillId).toList());
-        Map<Long, Skill> skillsById = sourceSkillIds.isEmpty()
+        List<Long> targetSkillIds = distinct(requests.stream().map(PromotionRequest::getTargetSkillId)
+                .filter(Objects::nonNull).toList());
+        List<Long> allSkillIds = distinct(java.util.stream.Stream.concat(
+                sourceSkillIds.stream(), targetSkillIds.stream()).toList());
+        Map<Long, Skill> skillsById = allSkillIds.isEmpty()
                 ? Map.of()
-                : skillRepository.findByIdIn(sourceSkillIds).stream()
+                : skillRepository.findByIdIn(allSkillIds).stream()
                 .collect(Collectors.toMap(Skill::getId, Function.identity()));
         List<Long> sourceVersionIds = distinct(requests.stream().map(PromotionRequest::getSourceVersionId).toList());
-        Map<Long, SkillVersion> versionsById = sourceVersionIds.isEmpty()
+        List<Long> latestVersionIds = distinct(targetSkillIds.stream()
+                .map(skillsById::get).filter(Objects::nonNull)
+                .map(Skill::getLatestVersionId).filter(Objects::nonNull).toList());
+        List<Long> allVersionIds = distinct(java.util.stream.Stream.concat(
+                sourceVersionIds.stream(), latestVersionIds.stream()).toList());
+        Map<Long, SkillVersion> versionsById = allVersionIds.isEmpty()
                 ? Map.of()
-                : skillVersionRepository.findByIdIn(sourceVersionIds).stream()
+                : skillVersionRepository.findByIdIn(allVersionIds).stream()
                 .collect(Collectors.toMap(SkillVersion::getId, Function.identity()));
         Set<Long> namespaceIds = new LinkedHashSet<>(distinct(requests.stream().map(PromotionRequest::getTargetNamespaceId).toList()));
         namespaceIds.addAll(skillsById.values().stream().map(Skill::getNamespaceId).toList());
@@ -214,14 +223,14 @@ public class JpaGovernanceQueryRepository implements GovernanceQueryRepository {
                     task.getReviewedBy(), reviewedBy != null ? reviewedBy.getDisplayName() : null,
                     task.getReviewComment(), task.getSubmittedAt(), task.getReviewedAt(),
                     task.getSubjectType().name(), task.getSubjectId(),
-                    task.getSubjectVersionId(), suite.getSlug());
+                    task.getSubjectVersionId(), suite.getSlug(), task.getOriginType().name());
         }
         Long skillId = task.getSkillId() != null
                 ? task.getSkillId()
                 : require(bundle.versionsById(), task.getSkillVersionId(), "skill_version.not_found").getSkillId();
         Skill skill = require(bundle.skillsById(), skillId, "skill.not_found");
         Namespace namespace = require(bundle.namespacesById(), task.getNamespaceId(), "namespace.not_found");
-        String skillVersion = task.getSkillVersion() != null
+        String skillVersion = task.getSubjectType() == ReviewSubjectType.SKILL_METADATA ? null : task.getSkillVersion() != null
                 ? task.getSkillVersion()
                 : require(bundle.versionsById(), task.getSkillVersionId(), "skill_version.not_found").getVersion();
         UserAccount submittedBy = bundle.usersById().get(task.getSubmittedBy());
@@ -242,7 +251,9 @@ public class JpaGovernanceQueryRepository implements GovernanceQueryRepository {
                 task.getReviewedAt(),
                 subjectType(task), task.getSubjectId() != null ? task.getSubjectId() : skillId,
                 task.getSubjectVersionId() != null ? task.getSubjectVersionId() : task.getSkillVersionId(),
-                skill.getSlug()
+                skill.getSlug(), task.getAvatarCandidateId(), task.isAvatarRemoval(),
+                task.getPreviousVisibility() == null ? null : task.getPreviousVisibility().name(),
+                task.getRequestedVisibility() == null ? null : task.getRequestedVisibility().name(), task.getOriginType().name()
         );
     }
 
@@ -274,8 +285,20 @@ public class JpaGovernanceQueryRepository implements GovernanceQueryRepository {
                 reviewedBy != null ? reviewedBy.getDisplayName() : null,
                 request.getReviewComment(),
                 request.getSubmittedAt(),
-                request.getReviewedAt()
+                request.getReviewedAt(),
+                request.getRequestKind().name(),
+                targetCurrentVersion(request, bundle),
+                request.getTargetVersionId()
         );
+    }
+
+    private String targetCurrentVersion(PromotionRequest request, PromotionReadBundle bundle) {
+        Skill target = bundle.skillsById().get(request.getTargetSkillId());
+        if (target == null || target.getLatestVersionId() == null) {
+            return null;
+        }
+        SkillVersion version = bundle.versionsById().get(target.getLatestVersionId());
+        return version != null ? version.getVersion() : null;
     }
 
     private GovernanceInboxItemResponse toReviewInboxItem(ReviewTask task, ReviewReadBundle bundle) {
@@ -290,8 +313,11 @@ public class JpaGovernanceQueryRepository implements GovernanceQueryRepository {
                     task.getSubmittedAt() != null ? task.getSubmittedAt().toString() : null,
                     namespaceSlug, null, "SUITE", suiteSlug);
         }
-        SkillVersion version = bundle.versionsById().get(task.getSkillVersionId());
-        Skill skill = version != null ? bundle.skillsById().get(version.getSkillId()) : null;
+        SkillVersion version = task.getSkillVersionId() != null
+                ? bundle.versionsById().get(task.getSkillVersionId()) : null;
+        Long skillId = task.getSkillId() != null ? task.getSkillId()
+                : version != null ? version.getSkillId() : null;
+        Skill skill = skillId != null ? bundle.skillsById().get(skillId) : null;
         Namespace namespace = skill != null ? bundle.namespacesById().get(skill.getNamespaceId()) : null;
         String namespaceSlug = namespace != null ? namespace.getSlug() : null;
         String skillSlug = skill != null ? skill.getSlug() : null;

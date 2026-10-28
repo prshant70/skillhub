@@ -6,6 +6,7 @@ import { getSkillDetailQueryKey } from './query-keys'
 import { buildSkillSearchUrl } from './skill-query-helpers'
 
 const PUBLISH_REQUEST_TIMEOUT_MS = 60_000
+const SCAN_POLL_INTERVAL_MS = 5_000
 
 async function searchSkills(params: SearchParams): Promise<PagedResponse<SkillSummary>> {
   return fetchJson<PagedResponse<SkillSummary>>(buildSkillSearchUrl(params))
@@ -44,17 +45,32 @@ async function getSkillDocumentation(namespace: string, slug: string, version: s
   return fetchText(`${WEB_API_PREFIX}/skills/${cleanNamespace}/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/file?path=${encodeURIComponent(path)}`)
 }
 
-async function publishSkill(params: { namespace: string; file: File; visibility: string; confirmWarnings?: boolean }): Promise<PublishResult> {
+async function publishSkill(params: { namespace: string; file: File; visibility: string; confirmWarnings?: boolean; avatarAction?: 'KEEP' | 'REPLACE' | 'REMOVE'; avatarUploadId?: string; expectedSlug?: string; displayName?: string }): Promise<PublishResult> {
   const cleanNamespace = params.namespace.startsWith('@') ? params.namespace.slice(1) : params.namespace
   const formData = new FormData()
   formData.append('file', params.file)
   formData.append('visibility', params.visibility)
   formData.append('confirmWarnings', String(params.confirmWarnings === true))
+  formData.append('avatarAction', params.avatarAction ?? 'KEEP')
+  if (params.avatarUploadId) formData.append('avatarUploadId', params.avatarUploadId)
+  if (params.expectedSlug) formData.append('expectedSlug', params.expectedSlug)
+  if (params.displayName?.trim()) formData.append('displayName', params.displayName.trim())
 
   return fetchJson<PublishResult>(`${WEB_API_PREFIX}/skills/${cleanNamespace}/publish`, {
     method: 'POST',
     headers: getCsrfHeaders(),
     body: formData,
+    timeoutMs: PUBLISH_REQUEST_TIMEOUT_MS,
+  })
+}
+
+export async function previewSkillPackage(file: File): Promise<import('@/api/generated/schema').components['schemas']['SkillPackagePreviewResponse']> {
+  const body = new FormData()
+  body.append('file', file)
+  return fetchJson(`${WEB_API_PREFIX}/skills/package-preview`, {
+    method: 'POST',
+    headers: getCsrfHeaders(),
+    body,
     timeoutMs: PUBLISH_REQUEST_TIMEOUT_MS,
   })
 }
@@ -76,6 +92,10 @@ export function useSkillDetail(namespace: string, slug: string, enabled = true) 
     queryFn: () => getSkillDetail(namespace, slug),
     enabled: enabled && !!namespace && !!slug,
     refetchOnMount: 'always',
+    refetchInterval: query => query.state.status !== 'error'
+      && (query.state.data?.headlineVersion?.status === 'SCANNING'
+        || query.state.data?.ownerPreviewVersion?.status === 'SCANNING')
+      ? SCAN_POLL_INTERVAL_MS : false,
   })
 }
 
@@ -84,6 +104,9 @@ export function useSkillVersions(namespace: string, slug: string, enabled = true
     queryKey: ['skills', namespace, slug, 'versions'],
     queryFn: () => getSkillVersions(namespace, slug),
     enabled: enabled && !!namespace && !!slug,
+    refetchInterval: query => query.state.status !== 'error'
+      && query.state.data?.some(version => version.status === 'SCANNING')
+      ? SCAN_POLL_INTERVAL_MS : false,
   })
 }
 
@@ -123,6 +146,8 @@ export function useSkillVersionDetail(namespace: string, slug: string, version?:
     queryKey: ['skills', namespace, slug, 'versions', version, 'detail'],
     queryFn: () => getSkillVersionDetail(namespace, slug, version!),
     enabled: enabled && !!namespace && !!slug && !!version,
+    refetchInterval: query => query.state.status !== 'error' && query.state.data?.status === 'SCANNING'
+      ? SCAN_POLL_INTERVAL_MS : false,
   })
 }
 
@@ -142,8 +167,12 @@ export function usePublishSkill() {
     meta: {
       skipGlobalErrorHandler: true,
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['skills'] })
+    onSuccess: async (result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['skills'], refetchType: variables.avatarAction === 'REMOVE' ? 'all' : 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['skill-avatar', result.namespace, result.slug] }),
+        queryClient.invalidateQueries({ queryKey: ['reviews'] }),
+      ])
     },
   })
 }

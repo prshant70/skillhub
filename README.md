@@ -107,14 +107,13 @@ with the Skill's source and the problem it solves, or submit a PR by following t
   expand.
 - **Pluggable Storage** — Local filesystem for development, S3 /
   MinIO for production. Swap via config.
-- **Internationalization** — Multi-language support with i18next.
+- **Internationalization** — Multi-language support with i18next: English, Simplified Chinese, Russian, and Korean.
 
 ## Quick Start
 
 Start the full local stack with:
 
 ```bash
-rm -rf /tmp/skillhub-runtime
 curl -fsSL https://imageless.oss-cn-beijing.aliyuncs.com/runtime.sh | sh -s -- up
 ```
 
@@ -137,7 +136,15 @@ The `--public-url` parameter sets the public access URL for your SkillHub instan
 curl -fsSL https://imageless.oss-cn-beijing.aliyuncs.com/runtime.sh | sh -s -- up --aliyun --public-url https://skillhub.your-company.com --version latest
 ```
 
-If deployment runs into problems, clear the existing runtime home and retry.
+Keep the existing runtime home when rerunning or updating the deployment. The
+runtime script reuses its `.env.release` file; deleting the directory discards
+your custom configuration, including the public URL and generated anonymous
+download cookie secret.
+
+If deployment runs into problems, inspect the `ps` and `logs` lifecycle commands
+printed by the runtime script, then retry `up` with the same runtime home. If you
+intentionally want a fresh configuration, back up `.env.release` before clearing
+the runtime home.
 
 ## SkillHub CLI
 
@@ -449,30 +456,9 @@ password defaults.
 
 ## Architecture
 
-```
-┌─────────────┐     ┌─────────────┐     ┌──────────────┐
-│   Web UI    │     │  CLI Tools  │     │  REST API    │
-│  (React 19) │     │             │     │              │
-└──────┬──────┘     └──────┬──────┘     └──────┬───────┘
-       │                   │                   │
-       └───────────────────┼───────────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │   Nginx     │
-                    └──────┬──────┘
-                           │
-                    ┌──────▼──────┐
-                    │ Spring Boot │  Auth · RBAC · Core Services
-                    │   (Java 21) │  OAuth2 · API Tokens · Audit
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-       ┌──────▼───┐  ┌─────▼────┐  ┌────▼────┐
-       │PostgreSQL│  │  Redis   │  │ Storage │
-       │    16    │  │    7     │  │ S3/MinIO│
-       └──────────┘  └──────────┘  └─────────┘
-```
+<div align="center">
+  <img src="./docs/skillhub/public/diagrams/architecture-overview.png" alt="SkillHub system architecture" width="900" />
+</div>
 
 **Backend (Spring Boot 3.2.3, Java 21):**
 - Multi-module Maven project with clean architecture

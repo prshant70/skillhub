@@ -170,7 +170,9 @@ class JpaGovernanceQueryRepositoryTest {
         UserAccount submitter = new UserAccount("submitter", "Submitter", "submitter@example.com", null);
         UserAccount reviewer = new UserAccount("reviewer", "Reviewer", "reviewer@example.com", null);
 
-        given(skillRepository.findByIdIn(List.of(201L))).willReturn(List.of(skill));
+        Skill targetSkill = new Skill(12L, "skill-a", "submitter", SkillVisibility.PUBLIC);
+        setField(targetSkill, "id", 301L);
+        given(skillRepository.findByIdIn(List.of(201L, 301L))).willReturn(List.of(skill, targetSkill));
         given(skillVersionRepository.findByIdIn(List.of(101L))).willReturn(List.of(version));
         given(namespaceRepository.findByIdIn(List.of(12L, 11L))).willReturn(List.of(targetNamespace, sourceNamespace));
         given(userAccountRepository.findByIdIn(List.of("submitter", "reviewer")))
@@ -205,6 +207,26 @@ class JpaGovernanceQueryRepositoryTest {
         assertThat(responses.get(0).title()).isEqualTo("Unknown target");
         assertThat(responses.get(0).namespace()).isEqualTo("team-a");
         assertThat(responses.get(0).subtitle()).isEqualTo("Spam");
+    }
+
+    @Test
+    void getReviewInboxItems_supportsMetadataWithoutVersionContext() {
+        ReviewTask task = ReviewTask.forSkillMetadata(201L, 11L, "submitter", 7L);
+        setField(task, "id", 4L);
+        Skill skill = new Skill(11L, "avatar-only", "submitter", SkillVisibility.PUBLIC);
+        setField(skill, "id", 201L);
+        Namespace namespace = new Namespace("team-a", "Team A", "submitter");
+        setField(namespace, "id", 11L);
+        given(skillRepository.findByIdIn(List.of(201L))).willReturn(List.of(skill));
+        given(namespaceRepository.findByIdIn(List.of(11L))).willReturn(List.of(namespace));
+
+        var responses = repository.getReviewInboxItems(List.of(task));
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).type()).isEqualTo("REVIEW");
+        assertThat(responses.get(0).title()).isEqualTo("team-a/avatar-only");
+        assertThat(responses.get(0).namespace()).isEqualTo("team-a");
+        assertThat(responses.get(0).skillSlug()).isEqualTo("avatar-only");
     }
 
     @Test

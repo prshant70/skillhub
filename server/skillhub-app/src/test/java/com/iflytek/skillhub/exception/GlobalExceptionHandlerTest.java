@@ -43,6 +43,16 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 
 @ExtendWith(MockitoExtension.class)
 class GlobalExceptionHandlerTest {
@@ -70,6 +80,7 @@ class GlobalExceptionHandlerTest {
         StaticMessageSource messageSource = new StaticMessageSource();
         messageSource.addMessage("error.request.timeout", java.util.Locale.getDefault(), "Request timed out");
         messageSource.addMessage("error.badRequest", java.util.Locale.getDefault(), "Invalid request");
+        messageSource.addMessage("error.notFound", java.util.Locale.getDefault(), "Resource not found");
         messageSource.addMessage("error.methodNotAllowed", java.util.Locale.getDefault(), "HTTP method is not supported");
         messageSource.addMessage("error.unsupportedMediaType", java.util.Locale.getDefault(), "Unsupported media type");
         messageSource.addMessage("error.notAcceptable", java.util.Locale.getDefault(),
@@ -126,15 +137,18 @@ class GlobalExceptionHandlerTest {
 
         try (RequestIdAccessor.Scope ignored = requestIdAccessor.open("request-123")) {
             ResponseEntity<ApiResponse<Void>> response = handler.handleGlobalException(
-                    new RuntimeException("boom"), request);
+                    new RuntimeException("synthetic-token-and-skill-content-marker"), request);
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         assertThat(loggedMessages()).anySatisfy(message -> assertThat(message)
                 .contains("requestId=request-123")
                 .contains("authentication=authenticated")
+                .contains("type=RuntimeException")
                 .doesNotContain(STABLE_USER_ID)
+                .doesNotContain("synthetic-token-and-skill-content-marker")
                 .doesNotContain("userId="));
+        assertThat(appender.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
     }
 
     @Test
@@ -162,7 +176,8 @@ class GlobalExceptionHandlerTest {
                 .thenReturn("/api/v1/skills/test/download");
 
         StorageAccessException exception = new StorageAccessException(
-                "download", "skills/test.zip", new RuntimeException("unavailable"));
+                "download", "synthetic-object-key-secret",
+                new RuntimeException("synthetic-storage-token"));
         try (RequestIdAccessor.Scope ignored = requestIdAccessor.open("request-123")) {
             ResponseEntity<ApiResponse<Void>> response =
                     handler.handleStorageAccess(exception, request);
@@ -173,7 +188,27 @@ class GlobalExceptionHandlerTest {
                 .contains("requestId=request-123")
                 .contains("authentication=authenticated")
                 .doesNotContain(STABLE_USER_ID)
+                .doesNotContain("synthetic-object-key-secret", "synthetic-storage-token")
                 .doesNotContain("userId="));
+        assertThat(appender.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+    }
+
+    @Test
+    void githubSyncStorageFailureOmitsUntrustedContentFromResponseAndLogs() {
+        String marker = "GITHUB_SYNC_STORAGE_WITH_SKILL_BODY_AND_TOKEN";
+        when(request.getServletPath()).thenReturn("/internal/github-sync/v1/uploads/123/content");
+        attachAppender();
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleStorageAccess(
+                new StorageAccessException("putObject", "staging-key",
+                        new IllegalStateException(marker)), request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().toString()).doesNotContain(marker, "staging-key");
+        assertThat(loggedMessages()).allSatisfy(message -> assertThat(message)
+                .doesNotContain(marker, "staging-key", "/internal/github-sync/v1/uploads/123/content"));
+        assertThat(appender.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
     }
 
     @Test
@@ -200,7 +235,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleMvcBadRequest_shouldReturn400WithoutUnhandledErrorLog() {
         attachAppender();
-        prepareClientErrorRequest("POST", "/api/v1/skills?bad=value");
+        prepareClientErrorRequest("POST", "/api/v1/skills");
 
         List<Exception> exceptions = List.of(
                 new MissingServletRequestParameterException("namespace", "String"),
@@ -271,6 +306,28 @@ class GlobalExceptionHandlerTest {
         assertThat(loggedMessages()).anySatisfy(message -> assertThat(message)
                 .contains("status=406")
                 .contains("code=error.notAcceptable"));
+    }
+
+    @Test
+    void noHandlerFoundReturns404EnvelopeWithoutExceptionDetails() throws Exception {
+        var mvc = MockMvcBuilders.standaloneSetup(new MissingHandlerController())
+                .setControllerAdvice(handler).build();
+        mvc.perform(get("/missing-handler").locale(java.util.Locale.getDefault()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.msg").value("Resource not found"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(content().string(not(containsString("internal-route-secret"))))
+                .andExpect(content().string(not(containsString("NoHandlerFoundException"))));
+    }
+
+    @org.springframework.boot.test.context.TestComponent
+    @RestController
+    static class MissingHandlerController {
+        @GetMapping("/missing-handler")
+        void missing() throws NoHandlerFoundException {
+            throw new NoHandlerFoundException("GET", "/internal-route-secret", new org.springframework.http.HttpHeaders());
+        }
     }
 
     private void authenticateRequest() {

@@ -64,6 +64,7 @@ class JpaMySkillQueryRepositoryTest {
 
         SkillVersion rejectedVersion = new SkillVersion(2L, "1.3.0", "user-1");
         rejectedVersion.setStatus(SkillVersionStatus.REJECTED);
+        rejectedVersion.setParsedMetadataJson("{\"name\":\"team-skill\",\"description\":\"待审摘要\",\"displayNameOverride\":\"网页新标题\",\"frontmatter\":{}}");
         ReflectionTestUtils.setField(rejectedVersion, "id", 23L);
         ReflectionTestUtils.setField(rejectedVersion, "createdAt", Instant.parse("2026-03-15T11:30:00Z"));
 
@@ -74,7 +75,6 @@ class JpaMySkillQueryRepositoryTest {
         given(skillVersionRepository.findBySkillIdAndStatus(2L, SkillVersionStatus.PUBLISHED)).willReturn(List.of(publishedVersion));
         given(skillVersionRepository.findBySkillId(2L)).willReturn(List.of(publishedVersion, rejectedVersion));
         given(promotionRequestRepository.findBySourceSkillIdAndStatus(2L, ReviewTaskStatus.PENDING)).willReturn(Optional.empty());
-        given(promotionRequestRepository.findBySourceSkillIdAndStatus(2L, ReviewTaskStatus.APPROVED)).willReturn(Optional.empty());
 
         var responses = repository.getSkillSummaries(List.of(skill), "user-1");
 
@@ -83,6 +83,8 @@ class JpaMySkillQueryRepositoryTest {
         assertThat(responses.get(0).publishedVersion()).isNotNull();
         assertThat(responses.get(0).ownerPreviewVersion()).isNotNull();
         assertThat(responses.get(0).ownerPreviewVersion().status()).isEqualTo("REJECTED");
+        assertThat(responses.get(0).ownerPreviewVersion().displayName()).isEqualTo("网页新标题");
+        assertThat(responses.get(0).ownerPreviewVersion().summary()).isEqualTo("待审摘要");
         assertThat(responses.get(0).canSubmitPromotion()).isTrue();
     }
 
@@ -103,7 +105,6 @@ class JpaMySkillQueryRepositoryTest {
         given(namespaceRepository.findByIdIn(List.of(101L))).willReturn(List.of(namespace));
         given(skillVersionRepository.findBySkillIdAndStatus(3L, SkillVersionStatus.PUBLISHED)).willReturn(List.of(publishedVersion));
         given(promotionRequestRepository.findBySourceSkillIdAndStatus(3L, ReviewTaskStatus.PENDING)).willReturn(Optional.empty());
-        given(promotionRequestRepository.findBySourceSkillIdAndStatus(3L, ReviewTaskStatus.APPROVED)).willReturn(Optional.empty());
 
         var responses = repository.getSkillSummaries(List.of(skill), "viewer-1");
 

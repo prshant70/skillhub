@@ -1,7 +1,9 @@
 package com.iflytek.skillhub.search.event;
 
 import com.iflytek.skillhub.domain.event.SkillPublishedEvent;
+import com.iflytek.skillhub.domain.event.SkillVisibilityChangedEvent;
 import com.iflytek.skillhub.domain.event.SkillStatusChangedEvent;
+import com.iflytek.skillhub.domain.event.SkillVersionYankedEvent;
 import com.iflytek.skillhub.domain.skill.SkillStatus;
 import com.iflytek.skillhub.search.SearchIndexService;
 import com.iflytek.skillhub.search.SearchRebuildService;
@@ -29,6 +31,18 @@ public class SearchIndexEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async("skillhubEventExecutor")
     public void onSkillPublished(SkillPublishedEvent event) {
+        searchRebuildService.rebuildBySkill(event.skillId());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Async("skillhubEventExecutor")
+    public void onSkillVisibilityChanged(SkillVisibilityChangedEvent event) {
+        searchRebuildService.rebuildBySkill(event.skillId());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Async("skillhubEventExecutor")
+    public void onSkillVersionYanked(SkillVersionYankedEvent event) {
         searchRebuildService.rebuildBySkill(event.skillId());
     }
 

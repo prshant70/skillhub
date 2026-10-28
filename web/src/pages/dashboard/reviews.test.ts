@@ -91,6 +91,10 @@ vi.mock('./profile-review-table', () => ({
   ProfileReviewTable: () => null,
 }))
 
+vi.mock('@/features/review/github-sync-review-queue', () => ({
+  GithubSyncReviewQueue: () => null,
+}))
+
 import { ReviewsPage } from './reviews'
 
 describe('ReviewsPage', () => {

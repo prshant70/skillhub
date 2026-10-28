@@ -1,5 +1,7 @@
 # 技能详情与审核页文件浏览侧边栏 - 产品需求文档 (PRD)
 
+> 2026-10-09 更新：本文件记录早期侧栏方案。**审核详情页**现采用顶部摘要和页级 Tab，文件树移入“内容与文件”Tab；下文有关审核页常驻右侧栏及其三个内层 Tab 的条款不再适用。技能市场详情页的侧栏需求仍按本文件执行。审核页最新行为见 [审核指南](../skillhub/guide/review.md)。
+
 ## 需求说明
 
 ### 背景
@@ -230,12 +232,14 @@
 
 ## 关联文档
 
+以下配套文档当前未收录于仓库，补齐后再添加链接：
+
 ### 需求文档
-- [API 接口契约](../requirements/2026-03-20-skill-file-browser-sidebar/05-api-contract.md) - 定义前后端接口规范
-- [验收用例](../requirements/2026-03-20-skill-file-browser-sidebar/04-acceptance-cases.md) - 功能验收测试用例
+- API 接口契约（`docs/requirements/2026-03-20-skill-file-browser-sidebar/05-api-contract.md`）- 定义前后端接口规范
+- 验收用例（`docs/requirements/2026-03-20-skill-file-browser-sidebar/04-acceptance-cases.md`）- 功能验收测试用例
 
 ### 执行计划
-- [实施计划](../superpowers/plans/2026-03-22-skill-file-browser-sidebar.md) - 详细的开发任务分解与执行步骤
+- 实施计划（`docs/superpowers/plans/2026-03-22-skill-file-browser-sidebar.md`）- 详细的开发任务分解与执行步骤
 
 ### 技术参考
 - 现有组件：

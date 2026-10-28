@@ -4,7 +4,13 @@ import { createElement } from 'react'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: unknown; to: string }) => createElement('a', { href: to }, children as string),
+  useNavigate: () => vi.fn(),
   useParams: () => ({ slug: 'test-ns' }),
+  useSearch: () => ({}),
+}))
+
+vi.mock('@/features/review/github-sync-review-queue', () => ({
+  GithubSyncReviewQueue: () => null,
 }))
 
 vi.mock('react-i18next', async () => {
@@ -67,6 +73,8 @@ vi.mock('@/features/namespace/namespace-header', () => ({
   NamespaceHeader: () => null,
 }))
 
+vi.mock('@/features/namespace/namespace-management-nav', () => ({ NamespaceManagementBack: () => createElement('a', { href: '/dashboard/namespaces' }, 'back'), NamespaceManagementNav: ({ slug, active }: { slug: string; active: string }) => createElement('nav', { 'data-slug': slug, 'data-active': active }) }))
+
 import { NamespaceReviewsPage } from './namespace-reviews'
 
 describe('NamespaceReviewsPage', () => {
@@ -124,9 +132,19 @@ describe('NamespaceReviewsPage', () => {
     expect(typeof NamespaceReviewsPage).toBe('function')
   })
 
+  it('uses a status filter instead of nested review tabs', () => {
+    const html = renderToStaticMarkup(createElement(NamespaceReviewsPage))
+    expect(html).toContain('nsReviews.statusLabel')
+    expect(html).toContain('nsReviews.tabPending')
+    expect(html).toContain('nsReviews.sortLabel')
+    expect(html).not.toContain('role="tab"')
+  })
+
   it('renders pagination for namespace review list when totalPages > 1', () => {
     const html = renderToStaticMarkup(createElement(NamespaceReviewsPage))
 
+    expect(html).toContain('data-active="reviews"')
+    expect(html).toContain('data-slug="test-ns"')
     expect(html).toContain('nsReviews.pageSummary')
     expect(html).toContain('/dashboard/namespaces/test-ns/reviews/1')
     expect(html).toContain('nsReviews.openReview')
@@ -171,4 +189,13 @@ describe('NamespaceReviewsPage', () => {
       expect(call[5]).toBe(false)
     }
   })
+
+  it('lists avatar-only tasks in the same queue with their existing review detail link', () => {
+    useReviewListMock.mockReturnValue({ data: { items: [{ ...createReviewItem(9), subjectType: 'SKILL_METADATA', version: null, avatarRemoval: true }], totalElements: 1, totalPages: 1 }, isLoading: false })
+    const html = renderToStaticMarkup(createElement(NamespaceReviewsPage))
+    expect(html).toContain('review.avatarRemoval')
+    expect(html).toContain('/dashboard/namespaces/test-ns/reviews/9')
+    expect(html).not.toContain('skillAvatar.reviewTitle')
+  })
+
 })

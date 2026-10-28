@@ -1,5 +1,8 @@
 package com.iflytek.skillhub.controller.portal;
 
+import com.iflytek.skillhub.service.SkillPackagePreviewService;
+import com.iflytek.skillhub.dto.SkillPackagePreviewResponse;
+import com.iflytek.skillhub.domain.shared.exception.DomainForbiddenException;
 import com.iflytek.skillhub.auth.rbac.PlatformPrincipal;
 import com.iflytek.skillhub.controller.BaseApiController;
 import com.iflytek.skillhub.controller.support.SkillPackageArchiveExtractor;
@@ -11,6 +14,9 @@ import com.iflytek.skillhub.dto.ApiResponse;
 import com.iflytek.skillhub.dto.ApiResponseFactory;
 import com.iflytek.skillhub.dto.PublishResponse;
 import com.iflytek.skillhub.metrics.SkillHubMetrics;
+import com.iflytek.skillhub.service.SkillPublishAppService;
+import com.iflytek.skillhub.service.AuditRequestContext;
+import jakarta.servlet.http.HttpServletRequest;
 import com.iflytek.skillhub.ratelimit.RateLimit;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -29,18 +35,37 @@ import java.util.List;
 @RequestMapping({"/api/v1/skills", "/api/web/skills"})
 public class SkillPublishController extends BaseApiController {
 
-    private final SkillPublishService skillPublishService;
+    private final SkillPublishAppService skillPublishService;
     private final SkillPackageArchiveExtractor skillPackageArchiveExtractor;
     private final SkillHubMetrics skillHubMetrics;
+    private final SkillPackagePreviewService packagePreview;
 
-    public SkillPublishController(SkillPublishService skillPublishService,
+    @PostMapping(value = "/package-preview", consumes = "multipart/form-data")
+    @RateLimit(category = "publish", authenticated = 10, anonymous = 0)
+    public ApiResponse<SkillPackagePreviewResponse> previewPackage(
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal PlatformPrincipal principal) throws IOException {
+        if (principal == null) {
+            throw new DomainForbiddenException("error.auth.required");
+        }
+        try {
+            return ok("response.success.read", packagePreview.preview(
+                    skillPackageArchiveExtractor.extractWithWarnings(file).entries()));
+        } catch (IllegalArgumentException exception) {
+            throw new DomainBadRequestException("error.skill.publish.package.invalid", exception.getMessage());
+        }
+    }
+
+    public SkillPublishController(SkillPublishAppService skillPublishService,
                                   SkillPackageArchiveExtractor skillPackageArchiveExtractor,
                                   ApiResponseFactory responseFactory,
-                                  SkillHubMetrics skillHubMetrics) {
+                                  SkillHubMetrics skillHubMetrics,
+                                  SkillPackagePreviewService packagePreview) {
         super(responseFactory);
         this.skillPublishService = skillPublishService;
         this.skillPackageArchiveExtractor = skillPackageArchiveExtractor;
         this.skillHubMetrics = skillHubMetrics;
+        this.packagePreview = packagePreview;
     }
 
     /**
@@ -54,7 +79,11 @@ public class SkillPublishController extends BaseApiController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("visibility") String visibility,
             @RequestParam(value = "confirmWarnings", defaultValue = "false") boolean confirmWarnings,
-            @AuthenticationPrincipal PlatformPrincipal principal) throws IOException {
+            @RequestParam(value = "avatarAction", defaultValue = "KEEP") SkillPublishAppService.AvatarAction avatarAction,
+            @RequestParam(value = "avatarUploadId", required = false) String avatarUploadId,
+            @RequestParam(value = "expectedSlug", required = false) String expectedSlug,
+            @RequestParam(value = "displayName", required = false) String displayName,
+            @AuthenticationPrincipal PlatformPrincipal principal, HttpServletRequest request) throws IOException {
 
         SkillVisibility skillVisibility = SkillVisibility.valueOf(visibility.toUpperCase());
 
@@ -75,13 +104,13 @@ public class SkillPublishController extends BaseApiController {
                     String.join("\n", extractionWarnings));
         }
 
-        SkillPublishService.PublishResult publishResult = skillPublishService.publishFromEntries(
+        SkillPublishService.PublishResult publishResult = skillPublishService.publish(
                 namespace,
                 entries,
                 principal.userId(),
                 skillVisibility,
                 principal.platformRoles(),
-                confirmWarnings
+                confirmWarnings, avatarAction, avatarUploadId, expectedSlug, displayName, AuditRequestContext.from(request)
         );
 
         PublishResponse response = new PublishResponse(

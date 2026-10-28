@@ -110,7 +110,14 @@ class SkillSearchAppServiceTest {
         when(userAccountRepository.findByIdIn(List.of("owner-1")))
                 .thenReturn(List.of(new UserAccount("owner-1", "Alice", "alice@example.com", null)));
 
+        var suiteProjection = org.mockito.Mockito.mock(SkillSuiteMembershipProjectionService.class);
+        setField(service, "suiteMembershipProjection", suiteProjection);
+        when(suiteProjection.enrich(anyList(), org.mockito.ArgumentMatchers.isNull()))
+                .thenAnswer(invocation -> invocation.<List<com.iflytek.skillhub.dto.SkillSummaryResponse>>getArgument(0)
+                        .stream().map(item -> item.withVisibleSuites(true)).toList());
         SkillSearchAppService.SearchResponse response = service.search("skill", null, "newest", 0, 1, null, null);
+        assertEquals(true, response.items().getFirst().hasVisibleSuites());
+        verify(suiteProjection, times(1)).enrich(anyList(), org.mockito.ArgumentMatchers.isNull());
 
         assertEquals(1, response.items().size());
         assertEquals("visible-skill", response.items().getFirst().slug());
@@ -175,6 +182,7 @@ class SkillSearchAppServiceTest {
         second.setLatestVersionId(102L);
 
         SkillVersion firstVersion = publishedVersion(10L, 101L, "1.0.0");
+        setField(firstVersion, "githubSyncRevision", 2);
         SkillVersion secondVersion = publishedVersion(11L, 102L, "2.0.0");
 
         Namespace namespace = new Namespace("team-a", "Team A", "owner-1");
@@ -191,7 +199,9 @@ class SkillSearchAppServiceTest {
 
         assertEquals(2, response.items().size());
         assertEquals("1.0.0", response.items().get(0).publishedVersion().version());
+        assertEquals(2, response.items().get(0).publishedVersion().syncRevision());
         assertEquals("2.0.0", response.items().get(1).publishedVersion().version());
+        assertNull(response.items().get(1).publishedVersion().syncRevision());
         verify(skillVersionRepository, times(1)).findByIdIn(List.of(101L, 102L));
         verify(skillVersionRepository, times(0))
                 .findBySkillIdInAndStatus(List.of(10L, 11L), com.iflytek.skillhub.domain.skill.SkillVersionStatus.PUBLISHED);

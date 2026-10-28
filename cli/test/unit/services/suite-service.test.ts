@@ -16,9 +16,11 @@ import {
 
 const registry = 'http://registry.test'
 
-function archive(content: string): { bytes: Uint8Array; fingerprint: string } {
-  const bytes = zipSync({ 'SKILL.md': new TextEncoder().encode(content) })
+function archive(content: string, includeExamples = true): { bytes: Uint8Array; fingerprint: string } {
+  const examples = '{invalid but versioned suite examples}'
+  const bytes = zipSync({ 'SKILL.md': new TextEncoder().encode(content), ...(includeExamples ? { '.skillhub/examples.json': new TextEncoder().encode(examples) } : {}) })
   const aggregate = createHash('sha256')
+  if (includeExamples) aggregate.update('.skillhub/examples.json:' + createHash('sha256').update(examples).digest('hex') + '\n')
   const fileHash = createHash('sha256').update(content).digest('hex')
   aggregate.update(`SKILL.md:${fileHash}\n`, 'utf8')
   return { bytes, fingerprint: `sha256:${aggregate.digest('hex')}` }
@@ -75,9 +77,9 @@ function clientWithPlanFailure(status: number, message: string): SkillHubClient 
   return new SkillHubClient(registry, undefined, fetchImpl)
 }
 
-function makePlan(): { plan: SuiteInstallPlan; downloads: Record<string, Uint8Array> } {
-  const alpha = archive('# Alpha')
-  const beta = archive('# Beta')
+function makePlan(includeExamples = true): { plan: SuiteInstallPlan; downloads: Record<string, Uint8Array> } {
+  const alpha = archive('# Alpha', includeExamples)
+  const beta = archive('# Beta', includeExamples)
   return {
     plan: {
       operationId: 'operation-1',
@@ -142,10 +144,10 @@ describe('Suite local lifecycle', () => {
     expect(result.installed).toHaveLength(2)
     expect(await readFile(join(rootDir, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha')
     expect(await readFile(join(rootDir, 'beta', 'SKILL.md'), 'utf8')).toBe('# Beta')
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
+    const inventory = await new InventoryStore(home).read()
     expect(inventory.suites).toEqual([expect.objectContaining({ slug: 'starter-pack', version: '1.0.0' })])
     expect(inventory.items).toHaveLength(2)
-    expect(inventory.items[0].installedBy).toEqual(['suite:@global/starter-pack@1.0.0'])
+    expect(inventory.items[0]!.targets[0]!.installedBy).toEqual(['suite:@global/starter-pack@1.0.0'])
 
     const checked = await checkSuite({
       registry,
@@ -566,8 +568,8 @@ describe('Suite local lifecycle', () => {
     const retainedBackup = (await readdir(rootDir)).find(name => name.startsWith('alpha.skillhub-suite-backup-'))
     expect(retainedBackup).toBeDefined()
     expect(await readFile(join(rootDir, retainedBackup!, 'SKILL.md'), 'utf8')).toBe('# Old Alpha')
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(inventory.items[0]).toMatchObject({ slug: 'alpha', version: '0.9.0', installedBy: ['direct'] })
+    const inventory = await new InventoryStore(home).read()
+    expect(inventory.items[0]).toMatchObject({ slug: 'alpha', targets: [expect.objectContaining({ version: '0.9.0', installedBy: ['direct'] })] })
   })
 
   test('installs one exact snapshot across multiple Agent targets', async () => {
@@ -592,8 +594,8 @@ describe('Suite local lifecycle', () => {
     expect(result.installed).toHaveLength(4)
     expect(await readFile(join(codexRoot, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha')
     expect(await readFile(join(claudeRoot, 'beta', 'SKILL.md'), 'utf8')).toBe('# Beta')
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(inventory.suites[0].members[0].installDirs).toHaveLength(2)
+    const inventory = await new InventoryStore(home).read()
+    expect(inventory.suites![0]!.members[0]!.installDirs).toHaveLength(2)
   })
 
   test('rejects member coordinates that collide in the local directory layout', async () => {
@@ -673,8 +675,8 @@ describe('Suite local lifecycle', () => {
 
     expect(removed.preserved).toEqual([{ dir: join(rootDir, 'alpha'), reason: 'shared' }])
     expect(await readFile(join(rootDir, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha')
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(inventory.items[0].installedBy).toEqual(['suite:@global/editor-pack@1.0.0'])
+    const inventory = await new InventoryStore(home).read()
+    expect(inventory.items[0]!.targets[0]!.installedBy).toEqual(['suite:@global/editor-pack@1.0.0'])
   })
 
   test('removing a Suite does not rewrite the same coordinate from another registry', async () => {
@@ -714,7 +716,7 @@ describe('Suite local lifecycle', () => {
       expect.objectContaining({
         registry: secondRegistry,
         slug: 'alpha',
-        installedBy: ['suite:@global/starter-pack@1.0.0']
+        targets: [expect.objectContaining({ installedBy: ['suite:@global/starter-pack@1.0.0'] })]
       })
     ])
     expect(await readFile(join(secondRoot, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha')
@@ -732,7 +734,7 @@ describe('Suite local lifecycle', () => {
   test('reuses a matching legacy direct install and preserves it when Suite is removed', async () => {
     const home = await mkdtemp(join(tmpdir(), 'skillhub-suite-home-'))
     const rootDir = await mkdtemp(join(tmpdir(), 'skillhub-suite-root-'))
-    const { plan, downloads } = makePlan()
+    const { plan, downloads } = makePlan(false)
     plan.members = [plan.members[0]!]
     const skillDir = join(rootDir, 'alpha')
     await mkdir(skillDir, { recursive: true })
@@ -763,9 +765,9 @@ describe('Suite local lifecycle', () => {
     const removed = await removeSuite({ registry, namespace: 'global', slug: 'starter-pack', home })
     expect(removed.preserved).toEqual([{ dir: skillDir, reason: 'shared' }])
     expect(await exists(skillDir)).toBe(true)
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
+    const inventory = await new InventoryStore(home).read()
     expect(inventory.suites).toEqual([])
-    expect(inventory.items[0].installedBy).toEqual(['direct'])
+    expect(inventory.items[0]!.targets[0]!.installedBy).toEqual(['direct'])
   })
 
   test('requires force before replacing a locally modified same-version member', async () => {
@@ -801,7 +803,7 @@ describe('Suite local lifecycle', () => {
     const home = await mkdtemp(join(tmpdir(), 'skillhub-suite-home-'))
     const directRoot = await mkdtemp(join(tmpdir(), 'skillhub-suite-direct-root-'))
     const suiteOnlyRoot = await mkdtemp(join(tmpdir(), 'skillhub-suite-only-root-'))
-    const { plan, downloads } = makePlan()
+    const { plan, downloads } = makePlan(false)
     const alpha = plan.members[0]!
     await mkdir(join(directRoot, alpha.slug), { recursive: true })
     await writeFile(join(directRoot, alpha.slug, 'SKILL.md'), '# Alpha')
@@ -852,7 +854,7 @@ describe('Suite local lifecycle', () => {
     expect(removed.removed.sort()).toEqual([join(rootDir, 'alpha'), join(rootDir, 'beta')].sort())
     expect(await exists(join(rootDir, 'alpha'))).toBe(false)
     expect(await exists(join(rootDir, 'beta'))).toBe(false)
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
+    const inventory = await new InventoryStore(home).read()
     expect(inventory).toMatchObject({ items: [], suites: [] })
   })
 
@@ -903,8 +905,8 @@ describe('Suite local lifecycle', () => {
     expect(await readFile(join(rootDir, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha v2')
     expect(await exists(join(rootDir, 'beta'))).toBe(false)
     expect(await readFile(join(rootDir, 'gamma', 'SKILL.md'), 'utf8')).toBe('# Gamma')
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(inventory.suites[0]).toMatchObject({ version: '2.0.0', fingerprint: 'sha256:suite-v2' })
+    const inventory = await new InventoryStore(home).read()
+    expect(inventory.suites![0]).toMatchObject({ version: '2.0.0', fingerprint: 'sha256:suite-v2' })
     expect(inventory.items.map((item: { slug: string }) => item.slug).sort()).toEqual(['alpha', 'gamma'])
   })
 
@@ -944,8 +946,8 @@ describe('Suite local lifecycle', () => {
     })).rejects.toThrow('local changes')
 
     expect(await readFile(join(rootDir, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Locally modified Alpha')
-    const unchangedInventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(unchangedInventory.suites[0]).toMatchObject({ version: '1.0.0', fingerprint: 'sha256:suite' })
+    const unchangedInventory = await new InventoryStore(home).read()
+    expect(unchangedInventory.suites![0]).toMatchObject({ version: '1.0.0', fingerprint: 'sha256:suite' })
 
     await upgradeSuite({
       registry,
@@ -957,8 +959,8 @@ describe('Suite local lifecycle', () => {
     })
 
     expect(await readFile(join(rootDir, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha v2')
-    const upgradedInventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(upgradedInventory.suites[0]).toMatchObject({ version: '2.0.0', fingerprint: 'sha256:suite-v2' })
+    const upgradedInventory = await new InventoryStore(home).read()
+    expect(upgradedInventory.suites![0]).toMatchObject({ version: '2.0.0', fingerprint: 'sha256:suite-v2' })
   })
 
   test('does not reinstall a Suite removed after upgrade planning', async () => {
@@ -995,7 +997,7 @@ describe('Suite local lifecycle', () => {
 
     await expect(upgrading).rejects.toThrow('installed Suite changed while waiting for target locks')
     expect(await readdir(rootDir)).toEqual([])
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
+    const inventory = await new InventoryStore(home).read()
     expect(inventory).toMatchObject({ items: [], suites: [] })
   })
 
@@ -1049,9 +1051,9 @@ describe('Suite local lifecycle', () => {
     await expect(upgrading).rejects.toThrow('installed Suite changed while waiting for target locks')
     expect(await readdir(originalRoot)).toEqual([])
     expect(await readFile(join(replacementRoot, 'alpha', 'SKILL.md'), 'utf8')).toBe('# Alpha')
-    const inventory = JSON.parse(await readFile(join(home, '.skillhub', 'inventory.json'), 'utf8'))
-    expect(inventory.suites[0]).toMatchObject({ version: '1.0.0', fingerprint: 'sha256:suite' })
-    expect(inventory.suites[0].members.every((member: { installDirs: string[] }) =>
+    const inventory = await new InventoryStore(home).read()
+    expect(inventory.suites![0]).toMatchObject({ version: '1.0.0', fingerprint: 'sha256:suite' })
+    expect(inventory.suites![0]!.members.every((member: { installDirs: string[] }) =>
       member.installDirs.every(dir => dir.startsWith(replacementRoot)))).toBe(true)
   })
 
@@ -1085,7 +1087,7 @@ describe('Suite local lifecycle', () => {
     const inventory = await new InventoryStore(home).read()
     expect(inventory.items).toEqual([expect.objectContaining({
       slug: 'beta',
-      installedBy: ['direct']
+      targets: [expect.objectContaining({ installedBy: ['direct'] })]
     })])
   })
 
@@ -1131,6 +1133,6 @@ describe('Suite local lifecycle', () => {
 
     expect(await readFile(join(betaDir, 'SKILL.md'), 'utf8')).toBe('# Beta')
     const inventory = await new InventoryStore(home).read()
-    expect(inventory.items.find(item => item.slug === 'beta')).toMatchObject({ installedBy: ['direct'] })
+    expect(inventory.items.find(item => item.slug === 'beta')).toMatchObject({ targets: [expect.objectContaining({ installedBy: ['direct'] })] })
   })
 })

@@ -13,8 +13,8 @@ import com.iflytek.skillhub.domain.skill.SkillVersionRepository;
 import com.iflytek.skillhub.domain.skill.SkillVersionStatus;
 import com.iflytek.skillhub.domain.skill.SkillVisibility;
 import com.iflytek.skillhub.domain.skill.service.SkillLifecycleProjectionService;
-import com.iflytek.skillhub.domain.social.SkillStar;
-import com.iflytek.skillhub.domain.social.SkillStarRepository;
+import com.iflytek.skillhub.repository.StarredSkillQueryRepository;
+import java.util.Map;
 import com.iflytek.skillhub.domain.social.SkillSubscriptionRepository;
 import com.iflytek.skillhub.repository.JpaMySkillQueryRepository;
 import com.iflytek.skillhub.repository.HiddenSkillQueryRepository;
@@ -50,7 +50,7 @@ class MySkillAppServiceTest {
     private SkillVersionRepository skillVersionRepository;
 
     @Mock
-    private SkillStarRepository skillStarRepository;
+    private StarredSkillQueryRepository starredSkillQueryRepository;
 
     @Mock
     private SkillSubscriptionRepository skillSubscriptionRepository;
@@ -68,15 +68,22 @@ class MySkillAppServiceTest {
     @BeforeEach
     void setUp() {
         skillLifecycleProjectionService = new SkillLifecycleProjectionService(skillVersionRepository);
-        mySkillQueryRepository = new JpaMySkillQueryRepository(
+        mySkillQueryRepository = org.mockito.Mockito.spy(new JpaMySkillQueryRepository(
                 namespaceRepository,
                 promotionRequestRepository,
                 skillLifecycleProjectionService
-        );
-        service = new MySkillAppService(
-                skillRepository,
+        ));
+        var entityManager = org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class);
+        var managementQuery = org.mockito.Mockito.mock(jakarta.persistence.Query.class);
+        org.mockito.Mockito.lenient().when(entityManager.createNativeQuery(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(managementQuery);
+        org.mockito.Mockito.lenient().when(managementQuery.setParameter(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(managementQuery);
+        org.mockito.Mockito.lenient().when(managementQuery.getResultList()).thenReturn(List.of());
+        ReflectionTestUtils.setField(mySkillQueryRepository, "entityManager", entityManager);
+        service = new MySkillAppService(org.mockito.Mockito.mock(com.iflytek.skillhub.domain.skill.SkillOwnerAccessPolicy.class), skillRepository,
                 skillVersionRepository,
-                skillStarRepository,
+                starredSkillQueryRepository,
                 skillSubscriptionRepository,
                 mySkillQueryRepository,
                 hiddenSkillQueryRepository,
@@ -87,22 +94,6 @@ class MySkillAppServiceTest {
 
     @Test
     void listMyStars_loadsAllPagesOfStars() {
-        SkillStar firstStar = new SkillStar(1L, "user-1");
-        ReflectionTestUtils.setField(firstStar, "createdAt", Instant.parse("2026-03-14T10:00:00Z"));
-        SkillStar secondStar = new SkillStar(2L, "user-1");
-        ReflectionTestUtils.setField(secondStar, "createdAt", Instant.parse("2026-03-14T11:00:00Z"));
-
-        given(skillStarRepository.findByUserId("user-1", PageRequest.of(1, 1)))
-                .willReturn(new PageImpl<>(List.of(secondStar), PageRequest.of(1, 1), 2));
-
-        Skill firstSkill = new Skill(1L, "first-skill", "user-1", SkillVisibility.PUBLIC);
-        firstSkill.setDisplayName("First Skill");
-        firstSkill.setSummary("first summary");
-        ReflectionTestUtils.setField(firstSkill, "id", 1L);
-        ReflectionTestUtils.setField(firstSkill, "starCount", 1);
-        ReflectionTestUtils.setField(firstSkill, "namespaceId", 101L);
-        ReflectionTestUtils.setField(firstSkill, "updatedAt", Instant.parse("2026-03-14T10:00:00Z"));
-
         Skill secondSkill = new Skill(2L, "second-skill", "user-1", SkillVisibility.PUBLIC);
         secondSkill.setDisplayName("Second Skill");
         secondSkill.setSummary("second summary");
@@ -111,12 +102,20 @@ class MySkillAppServiceTest {
         ReflectionTestUtils.setField(secondSkill, "namespaceId", 101L);
         ReflectionTestUtils.setField(secondSkill, "updatedAt", Instant.parse("2026-03-14T11:00:00Z"));
 
-        given(skillRepository.findByIdIn(List.of(2L))).willReturn(List.of(secondSkill));
+        given(starredSkillQueryRepository.findAccessible("user-1", Map.of(), Set.of(), PageRequest.of(1, 1)))
+                .willReturn(new PageImpl<>(List.of(secondSkill), PageRequest.of(1, 1), 2));
         given(skillVersionRepository.findBySkillIdAndStatus(2L, SkillVersionStatus.PUBLISHED)).willReturn(List.of());
         given(skillVersionRepository.findBySkillId(2L)).willReturn(List.of());
         given(namespaceRepository.findByIdIn(List.of(101L))).willReturn(List.of(new Namespace("team-ai", "Team AI", "user-1")));
 
-        var stars = service.listMyStars("user-1", 1, 1);
+        var suiteProjection = org.mockito.Mockito.mock(SkillSuiteMembershipProjectionService.class);
+        ReflectionTestUtils.setField(service, "suiteMembershipProjection", suiteProjection);
+        given(suiteProjection.enrich(org.mockito.ArgumentMatchers.anyList(), eq("user-1")))
+                .willAnswer(invocation -> invocation.<List<com.iflytek.skillhub.dto.SkillSummaryResponse>>getArgument(0)
+                        .stream().map(item -> item.withVisibleSuites(true)).toList());
+        var stars = service.listMyStars("user-1", 1, 1, Map.of(), Set.of());
+        assertThat(stars.items().getFirst().hasVisibleSuites()).isTrue();
+        org.mockito.Mockito.verify(suiteProjection).enrich(org.mockito.ArgumentMatchers.anyList(), eq("user-1"));
 
         assertThat(stars.total()).isEqualTo(2);
         assertThat(stars.page()).isEqualTo(1);
@@ -176,7 +175,6 @@ class MySkillAppServiceTest {
         given(skillVersionRepository.findBySkillId(2L)).willReturn(List.of(publishedVersion));
         given(namespaceRepository.findByIdIn(List.of(101L))).willReturn(List.of(namespace));
         given(promotionRequestRepository.findBySourceSkillIdAndStatus(2L, ReviewTaskStatus.PENDING)).willReturn(Optional.empty());
-        given(promotionRequestRepository.findBySourceSkillIdAndStatus(2L, ReviewTaskStatus.APPROVED)).willReturn(Optional.empty());
 
         var skills = service.listMySkills("user-1", 0, 10);
 
@@ -220,12 +218,10 @@ class MySkillAppServiceTest {
     void listMySkills_filtersPendingReviewForRegularUsers() {
         Skill pendingSkill = createSkill(1L, 101L, "pending-skill", "user-1");
         SkillVersion pendingVersion = createVersion(1L, 11L, "1.0.0", SkillVersionStatus.PENDING_REVIEW, "2026-03-15T09:30:00Z");
-        Skill publishedSkill = createSkill(2L, 101L, "published-skill", "user-1");
-        SkillVersion publishedVersion = createVersion(2L, 22L, "1.2.0", SkillVersionStatus.PUBLISHED, "2026-03-15T10:30:00Z");
 
-        given(skillRepository.findByOwnerId("user-1")).willReturn(List.of(pendingSkill, publishedSkill));
+        org.mockito.Mockito.doReturn(new PageImpl<>(List.of(pendingSkill), PageRequest.of(0, 10), 1))
+                .when(mySkillQueryRepository).findPendingSkills("user-1", null, null, PageRequest.of(0, 10));
         given(skillVersionRepository.findBySkillId(1L)).willReturn(List.of(pendingVersion));
-        given(skillVersionRepository.findBySkillId(2L)).willReturn(List.of(publishedVersion));
         given(namespaceRepository.findByIdIn(List.of(101L))).willReturn(List.of(namespace(101L, "team-ai")));
 
         var result = service.listMySkills("user-1", 0, 10, "PENDING_REVIEW", Set.of("USER"));

@@ -1,9 +1,14 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { createInstance } from 'i18next'
+import { I18nextProvider } from 'react-i18next'
+import ko from '@/i18n/locales/ko.json'
 import { afterEach } from 'vitest'
 import { describe, expect, it, vi } from 'vitest'
 
 const authMethodsFixture = vi.hoisted(() => ({
+  localize: false,
+  reason: undefined as string | undefined,
   methods: [] as Array<{ id: string, methodType: string }>,
   bootstrapEnabled: false,
   directEnabled: false,
@@ -11,12 +16,16 @@ const authMethodsFixture = vi.hoisted(() => ({
   returnTo: '',
   navigate: vi.fn(),
   mutateAsync: vi.fn(),
+  passwordEnabled: true,
+  registrationAvailable: true,
 }))
 
+const koreanI18n = createInstance()
+
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children }: { children: unknown }) => children,
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
   useNavigate: () => authMethodsFixture.navigate,
-  useSearch: () => ({ returnTo: authMethodsFixture.returnTo }),
+  useSearch: () => ({ returnTo: authMethodsFixture.returnTo, reason: authMethodsFixture.reason }),
 }))
 
 vi.mock('react-i18next', async () => {
@@ -24,7 +33,7 @@ vi.mock('react-i18next', async () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string) => key,
+      t: (key: string) => authMethodsFixture.localize ? koreanI18n.t(key) : key,
       i18n: { resolvedLanguage: 'en' },
     }),
   }
@@ -60,6 +69,17 @@ vi.mock('@/features/auth/use-auth-methods', () => ({
   useAuthMethods: () => ({ data: authMethodsFixture.methods, isError: authMethodsFixture.isError }),
 }))
 
+vi.mock('@/features/auth/use-local-auth-capabilities', () => ({
+  useLocalAuthCapabilities: () => ({
+    data: {
+      passwordLoginEnabled: authMethodsFixture.passwordEnabled,
+      selfRegistrationEnabled: authMethodsFixture.registrationAvailable,
+      registrationAvailable: authMethodsFixture.registrationAvailable,
+    },
+    isError: false,
+  }),
+}))
+
 vi.mock('@/features/auth/use-password-login', () => ({
   usePasswordLogin: () => ({
     mutateAsync: authMethodsFixture.mutateAsync,
@@ -82,10 +102,14 @@ import { LoginPage } from './login'
 describe('LoginPage', () => {
   afterEach(() => {
     cleanup()
+    authMethodsFixture.localize = false
+    authMethodsFixture.reason = undefined
     authMethodsFixture.methods = []
     authMethodsFixture.bootstrapEnabled = false
     authMethodsFixture.directEnabled = false
     authMethodsFixture.isError = false
+    authMethodsFixture.passwordEnabled = true
+    authMethodsFixture.registrationAvailable = true
     authMethodsFixture.returnTo = ''
     authMethodsFixture.navigate.mockClear()
     authMethodsFixture.mutateAsync.mockClear()
@@ -103,6 +127,34 @@ describe('LoginPage', () => {
     expect(html).toContain('login.submit')
     expect(html).not.toContain('login.tabEnterprise')
     expect(html).toContain('login.register')
+  })
+
+  it('renders a complete Korean agreement with working policy links', async () => {
+    await koreanI18n.init({ lng: 'ko', resources: { ko: { translation: ko } } })
+    authMethodsFixture.localize = true
+    render(<I18nextProvider i18n={koreanI18n}><LoginPage /></I18nextProvider>)
+    const terms = screen.getByRole('link', { name: '이용약관' })
+    const privacy = screen.getByRole('link', { name: '개인정보처리방침' })
+    expect(terms.getAttribute('href')).toBe('/terms')
+    expect(privacy.getAttribute('href')).toBe('/privacy')
+    expect(terms.parentElement?.textContent).toBe('로그인하면 이용약관 및 개인정보처리방침에 동의하게 됩니다.')
+  })
+
+  it('shows a translated disabled-account reason instead of a missing key', async () => {
+    await koreanI18n.init({ lng: 'ko', resources: { ko: { translation: ko } } })
+    authMethodsFixture.localize = true
+    authMethodsFixture.reason = 'accountDisabled'
+    render(<I18nextProvider i18n={koreanI18n}><LoginPage /></I18nextProvider>)
+    expect(screen.getByText('비활성화된 계정입니다')).toBeTruthy()
+  })
+
+  it('hides password and registration entry when local authentication is disabled', () => {
+    authMethodsFixture.passwordEnabled = false
+    authMethodsFixture.registrationAvailable = false
+    const html = renderToStaticMarkup(<LoginPage />)
+    expect(html).not.toContain('login.submit')
+    expect(html).not.toContain('login.register')
+    expect(html).toContain('systemConfig.passwordDisabled')
   })
 
   it('does not expose password routing details when direct login is configured', () => {

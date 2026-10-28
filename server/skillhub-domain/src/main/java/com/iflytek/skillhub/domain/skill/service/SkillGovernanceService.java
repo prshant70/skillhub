@@ -1,5 +1,7 @@
 package com.iflytek.skillhub.domain.skill.service;
 
+import com.iflytek.skillhub.domain.skill.SkillOwnerAccessPolicy;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iflytek.skillhub.domain.audit.AuditDetail;
 import com.iflytek.skillhub.domain.audit.AuditLogService;
 import com.iflytek.skillhub.domain.event.SkillStatusChangedEvent;
@@ -17,12 +19,14 @@ import com.iflytek.skillhub.domain.skill.SkillStatus;
 import com.iflytek.skillhub.domain.skill.SkillVersion;
 import com.iflytek.skillhub.domain.skill.SkillVersionRepository;
 import com.iflytek.skillhub.domain.skill.SkillVersionStatus;
+import com.iflytek.skillhub.domain.skill.metadata.SkillMetadata;
 import com.iflytek.skillhub.storage.ObjectStorageService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -37,6 +41,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 @Service
 public class SkillGovernanceService {
+    private final SkillOwnerAccessPolicy ownerAccess;
 
     private static final Logger log = LoggerFactory.getLogger(SkillGovernanceService.class);
 
@@ -49,9 +54,10 @@ public class SkillGovernanceService {
     private final ApplicationEventPublisher eventPublisher;
     private final SecurityScanService securityScanService;
     private final SkillStorageDeletionCompensationService compensationService;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    public SkillGovernanceService(SkillRepository skillRepository,
+    public SkillGovernanceService(SkillOwnerAccessPolicy ownerAccess, SkillRepository skillRepository,
                                   SkillVersionRepository skillVersionRepository,
                                   SkillFileRepository skillFileRepository,
                                   ReviewTaskRepository reviewTaskRepository,
@@ -60,7 +66,9 @@ public class SkillGovernanceService {
                                   ApplicationEventPublisher eventPublisher,
                                   SecurityScanService securityScanService,
                                   SkillStorageDeletionCompensationService compensationService,
+                                  ObjectMapper objectMapper,
                                   Clock clock) {
+        this.ownerAccess = ownerAccess;
         this.skillRepository = skillRepository;
         this.skillVersionRepository = skillVersionRepository;
         this.skillFileRepository = skillFileRepository;
@@ -70,6 +78,7 @@ public class SkillGovernanceService {
         this.eventPublisher = eventPublisher;
         this.securityScanService = securityScanService;
         this.compensationService = compensationService;
+        this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
@@ -93,9 +102,19 @@ public class SkillGovernanceService {
                               String clientIp,
                               String userAgent,
                               String reason) {
+        return archiveSkill(skillId, actorUserId, userNamespaceRoles, clientIp, userAgent, reason, java.util.Set.of());
+    }
+
+    @Transactional
+    public Skill archiveSkill(Long skillId,
+                              String actorUserId,
+                              Map<Long, NamespaceRole> userNamespaceRoles,
+                              String clientIp,
+                              String userAgent,
+                              String reason, java.util.Set<String> platformRoles) {
         Skill skill = skillRepository.findById(skillId)
                 .orElseThrow(() -> new DomainNotFoundException("error.skill.notFound", skillId));
-        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles);
+        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, platformRoles);
         return archiveSkillInternal(skill, actorUserId, clientIp, userAgent, reason);
     }
 
@@ -143,9 +162,18 @@ public class SkillGovernanceService {
                                 Map<Long, NamespaceRole> userNamespaceRoles,
                                 String clientIp,
                                 String userAgent) {
+        return unarchiveSkill(skillId, actorUserId, userNamespaceRoles, clientIp, userAgent, java.util.Set.of());
+    }
+
+    @Transactional
+    public Skill unarchiveSkill(Long skillId,
+                                String actorUserId,
+                                Map<Long, NamespaceRole> userNamespaceRoles,
+                                String clientIp,
+                                String userAgent, java.util.Set<String> platformRoles) {
         Skill skill = skillRepository.findById(skillId)
                 .orElseThrow(() -> new DomainNotFoundException("error.skill.notFound", skillId));
-        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles);
+        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, platformRoles);
 
         SkillStatus previousStatus = skill.getStatus();
         skill.setStatus(SkillStatus.ACTIVE);
@@ -164,7 +192,18 @@ public class SkillGovernanceService {
                               String clientIp,
                               String userAgent,
                               String namespaceSlug) {
-        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles);
+        deleteVersion(skill, version, actorUserId, userNamespaceRoles, clientIp, userAgent, namespaceSlug, java.util.Set.of());
+    }
+
+    @Transactional
+    public void deleteVersion(Skill skill,
+                              SkillVersion version,
+                              String actorUserId,
+                              Map<Long, NamespaceRole> userNamespaceRoles,
+                              String clientIp,
+                              String userAgent,
+                              String namespaceSlug, java.util.Set<String> platformRoles) {
+        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, platformRoles);
         if (version.getStatus() != SkillVersionStatus.DRAFT
                 && version.getStatus() != SkillVersionStatus.REJECTED
                 && version.getStatus() != SkillVersionStatus.SCAN_FAILED
@@ -284,7 +323,18 @@ public class SkillGovernanceService {
                                     String clientIp,
                                     String userAgent,
                                     String reason) {
-        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles);
+        return yankVersion(skill, version, actorUserId, userNamespaceRoles, clientIp, userAgent, reason, java.util.Set.of());
+    }
+
+    @Transactional
+    public SkillVersion yankVersion(Skill skill,
+                                    SkillVersion version,
+                                    String actorUserId,
+                                    Map<Long, NamespaceRole> userNamespaceRoles,
+                                    String clientIp,
+                                    String userAgent,
+                                    String reason, java.util.Set<String> platformRoles) {
+        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, platformRoles);
         return yankVersionInternal(version, actorUserId, clientIp, userAgent, reason);
     }
 
@@ -305,7 +355,9 @@ public class SkillGovernanceService {
         SkillVersion saved = skillVersionRepository.save(version);
         skillRepository.findById(version.getSkillId()).ifPresent(skill -> {
             if (versionId.equals(skill.getLatestVersionId())) {
-                skill.setLatestVersionId(findLatestPublishedVersionId(skill.getId()));
+                Optional<SkillVersion> fallback = findLatestPublishedVersion(skill.getId());
+                skill.setLatestVersionId(fallback.map(SkillVersion::getId).orElse(null));
+                fallback.ifPresent(published -> applyPublishedMetadata(skill, published));
                 skill.setUpdatedBy(actorUserId);
                 skillRepository.save(skill);
             }
@@ -317,18 +369,35 @@ public class SkillGovernanceService {
     }
 
     private Long findLatestPublishedVersionId(Long skillId) {
+        return findLatestPublishedVersion(skillId).map(SkillVersion::getId).orElse(null);
+    }
+
+    private Optional<SkillVersion> findLatestPublishedVersion(Long skillId) {
         return skillVersionRepository.findBySkillIdAndStatus(skillId, SkillVersionStatus.PUBLISHED).stream()
                 .max(java.util.Comparator
                         .comparing(SkillVersion::getPublishedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
                         .thenComparing(SkillVersion::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
-                        .thenComparing(SkillVersion::getId, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
-                .map(SkillVersion::getId)
-                .orElse(null);
+                        .thenComparing(SkillVersion::getId, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+    }
+
+    private void applyPublishedMetadata(Skill skill, SkillVersion version) {
+        String metadataJson = version.getParsedMetadataJson();
+        if (metadataJson == null || metadataJson.isBlank()) {
+            return;
+        }
+        try {
+            SkillMetadata metadata = objectMapper.readValue(metadataJson, SkillMetadata.class);
+            skill.setDisplayName(metadata.displayName());
+            skill.setSummary(metadata.description());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to deserialize skill metadata", e);
+        }
     }
 
     private void assertCanManageLifecycle(Skill skill,
                                           String actorUserId,
-                                          Map<Long, NamespaceRole> userNamespaceRoles) {
+                                          Map<Long, NamespaceRole> userNamespaceRoles, java.util.Set<String> platformRoles) {
+        ownerAccess.assertCanWrite(skill, actorUserId, platformRoles);
         NamespaceRole namespaceRole = userNamespaceRoles.get(skill.getNamespaceId());
         boolean canManage = skill.getOwnerId().equals(actorUserId)
                 || namespaceRole == NamespaceRole.ADMIN

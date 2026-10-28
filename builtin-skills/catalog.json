@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "skills": [
     {
+      "slug": "adversarial-review",
+      "version": "2.5.1",
+      "license": "MIT",
+      "upstream": {
+        "repository": "https://github.com/RevolutionLA/adversarial-review",
+        "commit": "0d007a223a5b0f3a1e09c12d891614683c90956c",
+        "path": "skills/adversarial-review"
+      }
+    },
+    {
       "slug": "ai-claim-checker",
       "version": "1.0.0",
       "license": "CC-BY-SA-4.0",
@@ -189,6 +199,16 @@
         "repository": "https://github.com/cosmicstack-labs/mercury-agent-skills",
         "commit": "4c57cf2eaeb3fb9c0e418615c7a36fe977c88b79",
         "path": "categories/creative-personal-development/time-blocking-scheduler"
+      }
+    },
+    {
+      "slug": "triage-nda",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "upstream": {
+        "repository": "https://github.com/anthropics/knowledge-work-plugins",
+        "commit": "da38ec1ee89d41e5380e652a97382695003396e7",
+        "path": "legal/skills/triage-nda"
       }
     },
     {

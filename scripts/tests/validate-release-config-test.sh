@@ -71,6 +71,22 @@ write_env "$valid_env" "release-download-secret-32-bytes-minimum"
 printf '%s\n' "SKILLHUB_STORAGE_S3_DISABLE_CHUNKED_ENCODING=true" >>"$valid_env"
 "$SCRIPT" "$valid_env" >/dev/null
 
+# The S3 client supports the default credential chain when both static keys are absent.
+iam_env="$tmp/iam.env"
+write_env "$iam_env" "release-download-secret-32-bytes-minimum"
+printf '%s\n' 'SKILLHUB_STORAGE_S3_ACCESS_KEY=' 'SKILLHUB_STORAGE_S3_SECRET_KEY=' >>"$iam_env"
+"$SCRIPT" "$iam_env" >/dev/null
+
+partial_s3_key_env="$tmp/partial-s3-key.env"
+write_env "$partial_s3_key_env" "release-download-secret-32-bytes-minimum"
+printf '%s\n' 'SKILLHUB_STORAGE_S3_SECRET_KEY=' >>"$partial_s3_key_env"
+expect_fail "$partial_s3_key_env" "SKILLHUB_STORAGE_S3_SECRET_KEY is required"
+
+partial_s3_secret_env="$tmp/partial-s3-secret.env"
+write_env "$partial_s3_secret_env" "release-download-secret-32-bytes-minimum"
+printf '%s\n' 'SKILLHUB_STORAGE_S3_ACCESS_KEY=' >>"$partial_s3_secret_env"
+expect_fail "$partial_s3_secret_env" "SKILLHUB_STORAGE_S3_ACCESS_KEY is required"
+
 compose_default_redirect="$tmp/compose-default-redirect.txt"
 SKILLHUB_DOWNLOAD_ANON_COOKIE_SECRET=release-download-secret-32-bytes-minimum \
 SKILLHUB_PUBLIC_BASE_URL=https://skillhub.example.com \
@@ -346,5 +362,10 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   esac
 done <"$REPO_ROOT/.env.release.draft" >"$draft_env"
 expect_fail "$draft_env" "POSTGRES_PASSWORD"
+
+invalid_chunked_env="$tmp/invalid-chunked.env"
+write_env "$invalid_chunked_env" "release-download-secret-32-bytes-minimum"
+printf '%s\n' 'SKILLHUB_STORAGE_S3_DISABLE_CHUNKED_ENCODING=perhaps' >>"$invalid_chunked_env"
+expect_fail "$invalid_chunked_env" "SKILLHUB_STORAGE_S3_DISABLE_CHUNKED_ENCODING"
 
 echo "validate-release-config-test passed"

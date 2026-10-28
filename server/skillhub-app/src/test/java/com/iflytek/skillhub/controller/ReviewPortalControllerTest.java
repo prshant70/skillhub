@@ -202,9 +202,10 @@ class ReviewPortalControllerTest {
                                 null,
                                 "REVIEW_TASK",
                                 List.of(),
-                                new com.iflytek.skillhub.dto.PageResponse<>(List.of(), 0, 0, 20)
+                                new com.iflytek.skillhub.dto.PageResponse<>(List.of(), 0, 0, 20),
+                                null
                         ),
-                        List.of(new SkillVersionResponse(100L, "1.2.0", "PENDING_REVIEW", null, 1, 10L, null, true, null)),
+                        List.of(new SkillVersionResponse(100L, "1.2.0", null, "PENDING_REVIEW", null, 1, 10L, null, true, null)),
                         List.of(new SkillFileResponse(1L, "README.md", 123L, "text/markdown", "sha")),
                         "README.md",
                         "# demo",

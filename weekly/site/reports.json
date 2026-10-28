@@ -1,6 +1,27 @@
 {
-  "latest": "2026-W39",
+  "latest": "2026-W43",
   "reports": [
+    {
+      "week": "2026-W43",
+      "title": "SkillHub 开源周报｜2026 年第 43 周",
+      "period": "2026-10-17 00:00—2026-10-24 00:00",
+      "snapshot": "2026-10-25 14:24 Asia/Shanghai",
+      "path": "reports/2026-W43/"
+    },
+    {
+      "week": "2026-W42",
+      "title": "SkillHub 开源周报｜2026 年第 42 周",
+      "period": "2026-10-10 00:00—2026-10-16 16:33",
+      "snapshot": "2026-10-16 16:33 Asia/Shanghai",
+      "path": "reports/2026-W42/"
+    },
+    {
+      "week": "2026-W40-W41",
+      "title": "SkillHub 开源周报｜2026 年第 40–41 周合刊",
+      "period": "2026-09-24 17:23:40—2026-10-10 00:00",
+      "snapshot": "2026-10-10 15:15 Asia/Shanghai",
+      "path": "reports/2026-W40-W41/"
+    },
     {
       "week": "2026-W39",
       "title": "SkillHub 开源周报｜2026 年第 39 周",

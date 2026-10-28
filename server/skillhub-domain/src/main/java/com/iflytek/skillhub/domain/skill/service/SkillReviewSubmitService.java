@@ -1,5 +1,6 @@
 package com.iflytek.skillhub.domain.skill.service;
 
+import com.iflytek.skillhub.domain.skill.SkillOwnerAccessPolicy;
 import com.iflytek.skillhub.domain.event.SkillPublishedEvent;
 import com.iflytek.skillhub.domain.namespace.NamespaceMemberRepository;
 import com.iflytek.skillhub.domain.namespace.NamespaceRole;
@@ -33,6 +34,7 @@ import java.util.Set;
  */
 @Service
 public class SkillReviewSubmitService {
+    private final SkillOwnerAccessPolicy ownerAccess;
 
     private final SkillRepository skillRepository;
     private final SkillVersionRepository skillVersionRepository;
@@ -40,14 +42,20 @@ public class SkillReviewSubmitService {
     private final NamespaceMemberRepository namespaceMemberRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private SkillVisibilityService visibilityService;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setVisibilityService(SkillVisibilityService service) { this.visibilityService = service; }
+
 
     public SkillReviewSubmitService(
+            SkillOwnerAccessPolicy ownerAccess,
             SkillRepository skillRepository,
             SkillVersionRepository skillVersionRepository,
             ReviewTaskRepository reviewTaskRepository,
             NamespaceMemberRepository namespaceMemberRepository,
             ApplicationEventPublisher eventPublisher,
             Clock clock) {
+        this.ownerAccess = ownerAccess;
         this.skillRepository = skillRepository;
         this.skillVersionRepository = skillVersionRepository;
         this.reviewTaskRepository = reviewTaskRepository;
@@ -71,13 +79,29 @@ public class SkillReviewSubmitService {
     @Transactional
     public void submitForReview(Long skillId, Long versionId, SkillVisibility targetVisibility,
                                 String actorUserId, Map<Long, NamespaceRole> userNamespaceRoles) {
+        submitForReview(skillId, versionId, targetVisibility, actorUserId, userNamespaceRoles, java.util.Set.of());
+    }
+
+    @Transactional
+    public void submitForReview(Long skillId, Long versionId, SkillVisibility targetVisibility,
+                                String actorUserId, Map<Long, NamespaceRole> userNamespaceRoles, java.util.Set<String> platformRoles) {
         Skill skill = skillRepository.findById(skillId)
                 .orElseThrow(() -> new DomainBadRequestException("error.skill.notFound", skillId));
+        if (skill.isGithubSyncManaged()) {
+            throw new DomainBadRequestException("review.submit.githubSyncManaged", versionId);
+        }
         SkillVersion version = skillVersionRepository.findById(versionId)
                 .orElseThrow(() -> new DomainBadRequestException("error.skill.version.notFound", versionId));
+        if (version.getGithubSyncIngestionId() != null) {
+            throw new DomainBadRequestException("review.submit.githubSyncManaged", versionId);
+        }
 
+        if (visibilityService != null) {
+            skill = visibilityService.lockedSkill(skill.getId());
+            visibilityService.assertNoPendingVisibility(skill.getId());
+        }
         // Validate ownership
-        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles);
+        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, platformRoles);
 
         // Validate version status - support both UPLOADED (new) and DRAFT (legacy)
         if (version.getStatus() != SkillVersionStatus.UPLOADED
@@ -124,9 +148,19 @@ public class SkillReviewSubmitService {
                                Set<String> platformRoles) {
         Skill skill = skillRepository.findById(skillId)
                 .orElseThrow(() -> new DomainBadRequestException("error.skill.notFound", skillId));
+        if (skill.isGithubSyncManaged()) {
+            throw new DomainBadRequestException("review.submit.githubSyncManaged", versionId);
+        }
         SkillVersion version = skillVersionRepository.findById(versionId)
                 .orElseThrow(() -> new DomainBadRequestException("error.skill.version.notFound", versionId));
+        if (version.getGithubSyncIngestionId() != null) {
+            throw new DomainBadRequestException("review.submit.githubSyncManaged", versionId);
+        }
 
+        if (visibilityService != null) {
+            skill = visibilityService.lockedSkill(skill.getId());
+            visibilityService.assertNoPendingVisibility(skill.getId());
+        }
         // Validate ownership
         assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, platformRoles);
 
@@ -160,13 +194,10 @@ public class SkillReviewSubmitService {
                 skill.getId(), version.getId(), actorUserId));
     }
 
-    private void assertCanManageLifecycle(Skill skill, String actorUserId, Map<Long, NamespaceRole> userNamespaceRoles) {
-        assertCanManageLifecycle(skill, actorUserId, userNamespaceRoles, Set.of());
-    }
-
-    private void assertCanManageLifecycle(Skill skill, String actorUserId,
+private void assertCanManageLifecycle(Skill skill, String actorUserId,
                                           Map<Long, NamespaceRole> userNamespaceRoles,
                                           Set<String> platformRoles) {
+        ownerAccess.assertCanWrite(skill, actorUserId, platformRoles);
         NamespaceRole namespaceRole = userNamespaceRoles.get(skill.getNamespaceId());
         boolean canManage = skill.getOwnerId().equals(actorUserId)
                 || namespaceRole == NamespaceRole.ADMIN

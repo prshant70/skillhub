@@ -4,15 +4,21 @@ import { Link, useParams, useNavigate, useRouterState, useSearch } from '@tansta
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ArrowUpCircle, Boxes, ChevronDown, ChevronUp, Clock, Folder, Globe, Lock, RefreshCw, ShieldCheck, Terminal, User, Users } from 'lucide-react'
 import { MarkdownRenderer } from '@/features/skill/markdown-renderer'
+import { SkillVisibilityDialog } from '@/features/skill/skill-visibility-dialog'
+import { SkillAvatar } from '@/features/skill/skill-avatar'
+import { SkillAvatarTakedown } from '@/features/skill/skill-avatar-takedown'
 import { resolvePackageRelativeLink } from '@/features/skill/package-relative-link'
 import { FileTree } from '@/features/skill/file-tree'
 import { FilePreviewDialog } from '@/features/skill/file-preview-dialog'
 import type { FileTreeNode } from '@/features/skill/file-tree-builder'
 import type { SkillFile } from '@/api/types'
+import { getVersionPresentation } from '@/shared/lib/version-presentation'
+import { CopyButton } from '@/shared/components/copy-button'
 import { InstallCommand } from '@/features/skill/install-command'
 import { ShareButton } from '@/features/skill/share-button'
 import { InstallForAgentButton } from '@/features/skill/install-for-agent-button'
 import { SkillLabelPanel } from '@/features/skill/skill-label-panel'
+import { GithubSkillSourceCard } from '@/features/skill/github-skill-source'
 import { ComplianceSnapshotPanel } from '@/features/skill/compliance-snapshot-panel'
 import {
   getOverviewCollapseMaxHeight,
@@ -29,6 +35,7 @@ import { StarButton } from '@/features/social/star-button'
 import { SubscribeButton } from '@/features/social/subscribe-button'
 import { SkillReviews } from '@/features/social/skill-reviews'
 import { useAuth } from '@/features/auth/use-auth'
+import { useMyNamespaces } from '@/shared/hooks/use-namespace-queries'
 import { adminApi, ApiError, buildApiUrl, WEB_API_PREFIX } from '@/api/client'
 import { useSubmitSkillReport } from '@/features/report/use-skill-reports'
 import { SecurityAuditSummary } from '@/features/security-audit/security-audit-summary'
@@ -47,6 +54,7 @@ import { ConfirmDialog } from '@/shared/components/confirm-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { toast } from '@/shared/lib/toast'
 import { cn } from '@/shared/lib/utils'
 import {
@@ -65,7 +73,8 @@ import {
   useSubmitForReview,
   useConfirmPublish,
 } from '@/shared/hooks/use-skill-queries'
-import { useSubmitPromotion } from '@/shared/hooks/use-user-queries'
+import { usePromotionSourceState, useSubmitPromotion } from '@/shared/hooks/use-user-queries'
+import { useDirectPromotionRevocation, usePromotionRevocationHistory, useSubmitPromotionRevocation } from '@/features/promotion/use-promotion-revocations'
 
 /**
  * Detail page for one skill and its version history.
@@ -108,12 +117,15 @@ function createPackageFilePreviewNode(file: SkillFile): FileTreeNode {
   }
 }
 
-function getPromotionConflictKey(error: ApiError): 'promotion.duplicate_pending' | 'promotion.already_promoted' | null {
+function getPromotionConflictKey(error: ApiError): 'promotion.duplicate_pending' | 'promotion.already_promoted' | 'promotion.target_version_conflict' | null {
   if (error.serverMessageKey === 'promotion.duplicate_pending') {
     return 'promotion.duplicate_pending'
   }
   if (error.serverMessageKey === 'promotion.already_promoted') {
     return 'promotion.already_promoted'
+  }
+  if (error.serverMessageKey === 'promotion.target_version_conflict') {
+    return 'promotion.target_version_conflict'
   }
   return null
 }
@@ -131,6 +143,9 @@ export function SkillDetailPage() {
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const [unarchiveConfirmOpen, setUnarchiveConfirmOpen] = useState(false)
   const [promotionConfirmOpen, setPromotionConfirmOpen] = useState(false)
+  const [promotionVersionId, setPromotionVersionId] = useState<string | null>(null)
+  const [revocationMode, setRevocationMode] = useState<'request' | 'direct' | null>(null)
+  const [revocationReason, setRevocationReason] = useState('')
   const [deleteSkillConfirmOpen, setDeleteSkillConfirmOpen] = useState(false)
   const [deleteSkillInputOpen, setDeleteSkillInputOpen] = useState(false)
   const [deleteSkillInput, setDeleteSkillInput] = useState('')
@@ -158,20 +173,44 @@ export function SkillDetailPage() {
   const overviewQuietGenerationRef = useRef(0)
   const { namespace, slug } = useParams({ from: '/space/$namespace/$slug' })
   const { user, hasRole } = useAuth()
+  const { data: myNamespaces } = useMyNamespaces(Boolean(user))
+  const isPromotionAdmin = hasRole('SKILL_ADMIN') || hasRole('SUPER_ADMIN')
   const detailQueriesEnabled = isSkillDetailQueriesEnabled(skillDeleted)
   const qns = detailQueriesEnabled ? namespace : ''
   const qslug = detailQueriesEnabled ? slug : ''
   const { data: skill, isLoading: isLoadingSkill, isFetching: isFetchingSkill, error: skillError } = useSkillDetail(qns, qslug, detailQueriesEnabled)
   const skillReady = detailQueriesEnabled && Boolean(skill) && !isLoadingSkill && !isFetchingSkill && !skillError
   const { data: versions } = useSkillVersions(qns, qslug, skillReady)
+  const { data: promotionState, isLoading: isLoadingPromotionState, error: promotionStateError } = usePromotionSourceState(
+    skill?.id ?? 0,
+    skillReady && Boolean(user) && namespace !== 'global' && Boolean(skill?.canManageLifecycle || skill?.canSubmitPromotion || isPromotionAdmin),
+  )
+  const { data: revocationHistory, isLoading: isLoadingRevocationHistory, error: revocationHistoryError } = usePromotionRevocationHistory(
+    skill?.id ?? 0,
+    skillReady && Boolean(user) && namespace !== 'global' && Boolean(skill?.canManageLifecycle || skill?.canSubmitPromotion || isPromotionAdmin),
+  )
+  const pendingRevocation = revocationHistory?.find((request) => request.status === 'PENDING')
   const headlineVersion = skill ? getHeadlineVersion(skill) : null
   const publishedVersion = skill ? getPublishedVersion(skill) : null
+  const publishedVersions = versions?.filter((version) => version.status === 'PUBLISHED') ?? []
+  const promotionVersion = publishedVersions.find((version) => String(version.id) === promotionVersionId)
+    ?? publishedVersions.find((version) => version.id === publishedVersion?.id)
+    ?? publishedVersions[0]
   const ownerPreviewVersion = skill ? getOwnerPreviewVersion(skill) : null
   const requestedVersion = search.version
   const selectedVersion = versions?.some(version => version.version === requestedVersion)
     ? requestedVersion
     : headlineVersion?.version ?? versions?.[0]?.version
   const selectedVersionEntry = versions?.find((version) => version.version === selectedVersion) ?? versions?.[0]
+  const selectedMetadata = selectedVersion === ownerPreviewVersion?.version ? ownerPreviewVersion
+    : selectedVersion === publishedVersion?.version ? publishedVersion
+      : selectedVersion === headlineVersion?.version ? headlineVersion : null
+  const { data: selectedVersionDetail } = useSkillVersionDetail(qns, qslug, selectedVersion, skillReady && !selectedMetadata)
+  const historicalMetadata = getVersionPresentation(selectedVersionDetail?.parsedMetadataJson)
+  const selectedDisplayName = selectedMetadata?.displayName ?? historicalMetadata.displayName ?? skill?.displayName
+  const selectedSummary = selectedMetadata?.summary ?? historicalMetadata.summary ?? skill?.summary
+  const showingUnpublishedPreview = selectedVersionEntry != null && selectedVersionEntry.status !== 'PUBLISHED'
+
   const { data: files } = useSkillFiles(qns, qslug, selectedVersion, skillReady)
   const documentationPath = resolveDocumentationFilePath(files)
   const { data: readme, error: readmeError } = useSkillReadme(qns, qslug, selectedVersion, documentationPath, skillReady)
@@ -201,7 +240,7 @@ export function SkillDetailPage() {
   const hasPublishedPendingReview = Boolean(publishedVersion && hasPendingOwnerPreview)
   const canInteract = skill?.canInteract ?? true
   const canReport = skill?.canReport ?? true
-  const canHardDeleteSkill = Boolean(skill && user && (skill.ownerId === user.userId || hasRole('SUPER_ADMIN')))
+  const canHardDeleteSkill = Boolean(skill && user && ((!skill.ownerReadOnly && skill.ownerId === user.userId) || hasRole('SUPER_ADMIN')))
   const canManageLabels = Boolean(skill && user && (skill.canManageLifecycle || hasRole('SUPER_ADMIN')))
   const canManageSecurityScan = Boolean(skill && user && (
     skill.canManageLifecycle || hasRole('SKILL_ADMIN') || hasRole('SUPER_ADMIN')
@@ -209,7 +248,8 @@ export function SkillDetailPage() {
   const securityAuditVersion = ownerPreviewVersion?.status === 'SCAN_FAILED'
     ? ownerPreviewVersion
     : selectedVersionEntry
-  const isVersionDownloadable = selectedVersionEntry?.status === 'PUBLISHED' && (selectedVersionEntry?.downloadAvailable ?? false)
+  const isVersionDownloadable = selectedVersionEntry?.downloadAvailable ?? false
+  const isVersionInstallable = selectedVersionEntry?.status === 'PUBLISHED' && isVersionDownloadable
   const suiteMemberships = skill?.memberOfSuites?.items ?? skill?.entryForSuites ?? []
   const suiteMembershipTotal = skill?.memberOfSuites?.total ?? suiteMemberships.length
 
@@ -315,6 +355,8 @@ export function SkillDetailPage() {
   const withdrawReviewMutation = useWithdrawSkillReview()
   const rereleaseVersionMutation = useRereleaseSkillVersion()
   const submitPromotionMutation = useSubmitPromotion()
+  const submitRevocationMutation = useSubmitPromotionRevocation()
+  const directRevocationMutation = useDirectPromotionRevocation()
   const reportMutation = useSubmitSkillReport(namespace, slug)
   const submitForReviewMutation = useSubmitForReview()
   const confirmPublishMutation = useConfirmPublish()
@@ -390,7 +432,7 @@ export function SkillDetailPage() {
       requireLogin()
       return
     }
-    if (!selectedVersionEntry || isPendingPreview) {
+    if (!selectedVersionEntry || !isVersionDownloadable) {
       return
     }
 
@@ -574,21 +616,22 @@ export function SkillDetailPage() {
     }
     try {
       await deleteSkillMutation.mutateAsync({ namespace, slug, ownerId: skill.ownerId })
-      setSkillDeleted(true)
-      toast.success(
-        t('skillDetail.deleteSkillSuccessTitle'),
-        t('skillDetail.deleteSkillSuccessDescription', { skill: skill.displayName }),
-      )
-      setDeleteSkillInputOpen(false)
-      navigateAfterOverlays(() => {
-        navigate({ to: resolveDeletedSkillReturnTo(search.returnTo) })
-      })
-      queryClient.removeQueries({ queryKey: ['skills', namespace, slug] })
-      queryClient.invalidateQueries({ queryKey: ['skills', 'my'] })
-    } catch (error) {
-      toast.error(t('skillDetail.deleteSkillErrorTitle'), error instanceof Error ? error.message : '')
-      throw error
+    } catch {
+      // MutationCache already reports the error and handles expired sessions.
+      // Consume the button handler rejection without running success side effects.
+      return
     }
+    setSkillDeleted(true)
+    toast.success(
+      t('skillDetail.deleteSkillSuccessTitle'),
+      t('skillDetail.deleteSkillSuccessDescription', { skill: skill.displayName }),
+    )
+    setDeleteSkillInputOpen(false)
+    navigateAfterOverlays(() => {
+      navigate({ to: resolveDeletedSkillReturnTo(search.returnTo) })
+    })
+    queryClient.removeQueries({ queryKey: ['skills', namespace, slug] })
+    queryClient.invalidateQueries({ queryKey: ['skills', 'my'] })
   }
 
   const handleDeleteVersion = async () => {
@@ -714,17 +757,17 @@ export function SkillDetailPage() {
   }
 
   const handleSubmitPromotion = async () => {
-    if (!skill || !publishedVersion) {
+    if (!skill || !promotionVersion || !promotionState || promotionState.pendingPromotionId) {
       return
     }
     try {
       await submitPromotionMutation.mutateAsync({
         sourceSkillId: skill.id,
-        sourceVersionId: publishedVersion.id,
+        sourceVersionId: promotionVersion.id,
       })
       toast.success(
         t('skillDetail.promotionSuccessTitle'),
-        t('skillDetail.promotionSuccessDescription', { skill: skill.displayName, version: publishedVersion.version }),
+        t('skillDetail.promotionSuccessDescription', { skill: skill.displayName, version: promotionVersion.version }),
       )
       setPromotionConfirmOpen(false)
     } catch (error) {
@@ -738,9 +781,32 @@ export function SkillDetailPage() {
           toast.error(t('skillDetail.promotionAlreadyPromotedTitle'), t('skillDetail.promotionAlreadyPromotedDescription'))
           return
         }
+        if (conflictKey === 'promotion.target_version_conflict') {
+          toast.error(t('skillDetail.promotionVersionConflictTitle'), t('skillDetail.promotionVersionConflictDescription'))
+          return
+        }
       }
       toast.error(t('skillDetail.promotionErrorTitle'), error instanceof Error ? error.message : '')
       throw error
+    }
+  }
+
+  const handleSubmitRevocation = async () => {
+    if (!skill || !promotionState?.targetSkillId || !revocationMode) {
+      return
+    }
+    try {
+      const input = { sourceSkillId: skill.id, reason: revocationReason.trim() }
+      if (revocationMode === 'direct') {
+        await directRevocationMutation.mutateAsync(input)
+      } else {
+        await submitRevocationMutation.mutateAsync(input)
+      }
+      toast.success(t(revocationMode === 'direct' ? 'skillDetail.revocationDirectSuccess' : 'skillDetail.revocationRequestSuccess'))
+      setRevocationMode(null)
+      setRevocationReason('')
+    } catch (error) {
+      toast.error(t('skillDetail.revocationError'), error instanceof Error ? error.message : '')
     }
   }
 
@@ -801,6 +867,7 @@ export function SkillDetailPage() {
     <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 animate-fade-up">
       {/* Main Content */}
       <div className="flex-1 min-w-0 space-y-8">
+        {skill.ownerReadOnly && <p role="status" className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">{t('mySkills.ownerReadOnly')}</p>}
         <div className="space-y-3">
           <Button
             variant="ghost"
@@ -850,7 +917,15 @@ export function SkillDetailPage() {
               </span>
             )}
           </div>
-          <h1 className="text-balance break-words text-4xl font-bold font-heading text-foreground [overflow-wrap:anywhere]">{skill.displayName}</h1>
+          <div className="flex items-center gap-4"><SkillAvatar name={selectedDisplayName ?? skill.displayName} url={skill.avatarUrl} size="h-16 w-16 text-2xl" /><h1 className="text-balance break-words text-4xl font-bold font-heading text-foreground [overflow-wrap:anywhere]">{selectedDisplayName}</h1></div>
+          <div className="flex min-w-0 items-center gap-2">
+            <code className="min-w-0 break-all text-sm text-muted-foreground">@{skill.namespace}/{skill.slug}</code>
+            <CopyButton text={`@${skill.namespace}/${skill.slug}`} ariaLabel={t('skillDetail.copyCoordinate')} className="shrink-0" />
+          </div>
+          {skill.avatarUrl && user?.userId !== skill.ownerId && (namespace === 'global'
+            ? isPromotionAdmin
+            : myNamespaces?.some((item) => item.slug === namespace && (item.currentUserRole === 'OWNER' || item.currentUserRole === 'ADMIN')))
+            && <SkillAvatarTakedown namespace={namespace} slug={slug} />}
           {skill.ownerDisplayName && (
             <div className="flex min-w-0">
               <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-border/60 bg-background/85 px-3 py-1.5 text-sm text-muted-foreground shadow-sm backdrop-blur-sm">
@@ -861,8 +936,8 @@ export function SkillDetailPage() {
               </div>
             </div>
           )}
-          {skill.summary && (
-            <p className="text-lg text-muted-foreground leading-relaxed">{skill.summary}</p>
+          {selectedSummary && (
+            <p className="text-lg text-muted-foreground leading-relaxed">{selectedSummary}</p>
           )}
           {(skill.labels?.length ?? 0) > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -883,10 +958,10 @@ export function SkillDetailPage() {
               ))}
             </div>
           )}
-          {isPendingPreview && (
+          {showingUnpublishedPreview && (
             <Card className="border-amber-500/30 bg-amber-500/5 p-4 text-sm text-muted-foreground">
-              <div className="font-medium text-foreground">{t('skillDetail.pendingPreviewTitle')}</div>
-              <p className="mt-1">{t('skillDetail.pendingPreviewDescription')}</p>
+              <div className="font-medium text-foreground">{t('skillDetail.unpublishedPreviewTitle')}</div>
+              <p className="mt-1">{t('skillDetail.unpublishedPreviewDescription')}</p>
             </Card>
           )}
           {hasRejectedOwnerPreview && (
@@ -968,7 +1043,7 @@ export function SkillDetailPage() {
                     <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                       {t('skillDetail.summaryLabel')}
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-foreground">{skill.summary}</p>
+                    <p className="mt-2 text-sm leading-6 text-foreground">{selectedSummary}</p>
                   </div>
                 ) : null}
                 <div className="text-sm text-muted-foreground">
@@ -997,8 +1072,9 @@ export function SkillDetailPage() {
                       <div className="flex items-start justify-between gap-4 mb-2">
                         <span className="font-semibold font-heading text-foreground flex items-center gap-2 flex-wrap min-w-0">
                           <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-sm font-mono">
-                            v{version.version}
+                            {version.syncRevision ? t('review.githubRevisionValue', { count: version.syncRevision }) : `v${version.version}`}
                           </span>
+                          {version.syncRevision && <span className="max-w-full break-all text-xs font-normal text-muted-foreground">{version.version}</span>}
                           {version.status && (
                             <span className="rounded-full border border-border/60 bg-secondary/40 px-2.5 py-0.5 text-xs text-muted-foreground">
                               {resolveVersionStatusLabel(version.status)}
@@ -1131,7 +1207,9 @@ export function SkillDetailPage() {
           <div className="flex items-center justify-between">
             <div className="text-sm text-muted-foreground">{t('skillDetail.version')}</div>
             <div className="max-w-[11rem] break-all text-right font-mono font-semibold leading-snug text-foreground">
-              {headlineVersion ? `v${headlineVersion.version}` : '—'}
+              {selectedVersionEntry ? selectedVersionEntry.syncRevision != null
+                ? t('review.githubRevisionValue', { count: selectedVersionEntry.syncRevision })
+                : `v${selectedVersionEntry.version}` : '—'}
             </div>
           </div>
 
@@ -1335,7 +1413,7 @@ export function SkillDetailPage() {
             <Button
               variant="outline"
               onClick={() => setWithdrawVersionTarget(ownerPreviewVersion.version)}
-              disabled={withdrawReviewMutation.isPending}
+              disabled={!skill.canManageLifecycle || withdrawReviewMutation.isPending}
             >
               {withdrawReviewMutation.isPending ? t('skillDetail.processing') : t('skillDetail.withdrawReview')}
             </Button>
@@ -1365,7 +1443,7 @@ export function SkillDetailPage() {
           namespace={namespace}
           slug={slug}
           version={selectedVersionEntry?.version ?? publishedVersion?.version ?? ''}
-          disabled={!selectedVersionEntry || skill.status === 'ARCHIVED' || !isVersionDownloadable}
+          disabled={!selectedVersionEntry || skill.status === 'ARCHIVED' || !isVersionInstallable}
         />
 
         {canManageSecurityScan && securityAuditVersion && (
@@ -1384,6 +1462,10 @@ export function SkillDetailPage() {
           canManage={canManageLabels}
           isSuperAdmin={hasRole('SUPER_ADMIN')}
         />
+
+        {skill.githubSource && publishedVersion && (
+          <GithubSkillSourceCard source={skill.githubSource} version={publishedVersion.version} />
+        )}
 
         {skill.canManageLifecycle && (
           <Card className="p-5 space-y-3">
@@ -1425,6 +1507,9 @@ export function SkillDetailPage() {
               </div>
             </div>
             <div className="flex flex-col gap-3 pt-3 border-t border-border/40">
+              {skill.status === 'ACTIVE' && !skill.hidden && publishedVersion && <SkillVisibilityDialog
+                namespace={namespace} slug={slug} visibility={skill.visibility} disabled={hasPendingOwnerPreview} />}
+
               {skill.status === 'ARCHIVED' ? (
                 <Button variant="outline" onClick={() => setUnarchiveConfirmOpen(true)} disabled={unarchiveMutation.isPending}>
                   {unarchiveMutation.isPending ? t('skillDetail.processing') : t('skillDetail.unarchiveSkill')}
@@ -1447,18 +1532,80 @@ export function SkillDetailPage() {
           </Card>
         )}
 
-        {skill.canSubmitPromotion && publishedVersion && (
+        {namespace !== 'global' && (skill.canManageLifecycle || skill.canSubmitPromotion || isPromotionAdmin)
+          && (publishedVersions.length > 0 || Boolean(promotionState?.targetSkillId) || Boolean(revocationHistory?.length)) && (
           <Card className="p-5 space-y-3">
             <div className="flex items-center gap-2">
               <ArrowUpCircle className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-semibold font-heading text-foreground">{t('skillDetail.promotionSectionTitle')}</span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t('skillDetail.promotionSectionDescription', { version: publishedVersion.version })}
-            </p>
-            <Button variant="outline" onClick={() => setPromotionConfirmOpen(true)} disabled={submitPromotionMutation.isPending}>
-              {submitPromotionMutation.isPending ? t('skillDetail.processing') : t('skillDetail.promoteToGlobal')}
-            </Button>
+            {isLoadingPromotionState && <p className="text-sm text-muted-foreground">{t('skillDetail.promotionStateLoading')}</p>}
+            {promotionStateError && <p className="text-sm text-destructive">{t('skillDetail.promotionStateError')}</p>}
+            {promotionState && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {promotionState.targetSkillId
+                    ? t('skillDetail.promotionGlobalCurrent', { version: promotionState.targetCurrentVersion ?? t('skillDetail.promotionNoGlobalVersion') })
+                    : t('skillDetail.promotionNoGlobalSkill')}
+                </p>
+                {publishedVersions.length > 0 && (
+                  <>
+                    <label htmlFor="promotion-source-version" className="block text-sm font-medium text-foreground">{t('skillDetail.promotionSourceVersion')}</label>
+                    <Select value={String(promotionVersion?.id ?? '')} onValueChange={setPromotionVersionId}>
+                      <SelectTrigger id="promotion-source-version" aria-label={t('skillDetail.promotionSourceVersion')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {publishedVersions.map((version) => (
+                          <SelectItem key={version.id} value={String(version.id)}>v{version.version}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+                {promotionState.pendingPromotionId ? (
+                  <p className="text-sm text-muted-foreground">{t('skillDetail.promotionPending')}</p>
+                ) : promotionVersion ? (
+                  <Button variant="outline" onClick={() => setPromotionConfirmOpen(true)} disabled={!(skill.canSubmitPromotion || isPromotionAdmin) || Boolean(pendingRevocation) || submitPromotionMutation.isPending || !promotionVersion}>
+                    {submitPromotionMutation.isPending ? t('skillDetail.processing') : t(promotionState.requestKind === 'UPDATE' ? 'skillDetail.submitGlobalUpdate' : 'skillDetail.promoteToGlobal')}
+                  </Button>
+                ) : null}
+                {promotionState.targetSkillId && (
+                  <div className="space-y-2 border-t border-border/60 pt-3">
+                    <p className="text-sm text-muted-foreground">{t('skillDetail.revocationDescription')}</p>
+                    {isLoadingRevocationHistory && <p className="text-sm text-muted-foreground">{t('skillDetail.revocationHistoryLoading')}</p>}
+                    {revocationHistoryError && <p className="text-sm text-destructive">{t('skillDetail.revocationHistoryError')}</p>}
+                    {pendingRevocation ? (
+                      <p className="text-sm text-muted-foreground">{t('skillDetail.revocationPending')}</p>
+                    ) : !isLoadingRevocationHistory && !revocationHistoryError && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={() => setRevocationMode('request')}>
+                          {t('skillDetail.requestRevocation')}
+                        </Button>
+                        {isPromotionAdmin && (
+                          <Button variant="destructive" onClick={() => setRevocationMode('direct')}>
+                            {t('skillDetail.directRevocation')}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+            {revocationHistory && revocationHistory.length > 0 && (
+              <div className="space-y-1 border-t border-border/60 pt-3 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">{t('skillDetail.revocationHistoryTitle')}</p>
+                {revocationHistory.map((request) => (
+                  <p key={request.id}>
+                    {t('skillDetail.revocationHistoryItem', {
+                      status: t(`skillDetail.revocationStatus.${request.status}`),
+                      date: formatLocalDateTime(request.submittedAt, i18n.language),
+                    })}
+                  </p>
+                ))}
+              </div>
+            )}
           </Card>
         )}
 
@@ -1524,14 +1671,42 @@ export function SkillDetailPage() {
       <ConfirmDialog
         open={promotionConfirmOpen}
         onOpenChange={setPromotionConfirmOpen}
-        title={t('skillDetail.promotionConfirmTitle')}
-        description={t('skillDetail.promotionConfirmDescription', {
-          skill: skill.displayName,
-          version: publishedVersion?.version ?? '',
-        })}
-        confirmText={t('skillDetail.promoteToGlobal')}
+        title={t(promotionState?.requestKind === 'UPDATE' ? 'skillDetail.globalUpdateConfirmTitle' : 'skillDetail.promotionConfirmTitle')}
+        description={promotionState?.requestKind === 'UPDATE'
+          ? t('skillDetail.globalUpdateConfirmDescription', {
+            skill: skill.displayName,
+            source: promotionVersion?.version ?? '',
+            target: promotionState.targetCurrentVersion ?? t('skillDetail.promotionNoGlobalVersion'),
+          })
+          : t('skillDetail.promotionConfirmDescription', {
+            skill: skill.displayName,
+            version: promotionVersion?.version ?? '',
+          })}
+        confirmText={t(promotionState?.requestKind === 'UPDATE' ? 'skillDetail.submitGlobalUpdate' : 'skillDetail.promoteToGlobal')}
         onConfirm={handleSubmitPromotion}
       />
+
+      <Dialog open={revocationMode !== null} onOpenChange={(open) => { if (!open) setRevocationMode(null) }}>
+        <DialogContent aria-label={t('skillDetail.revocationConfirmTitle')}>
+          <DialogHeader>
+            <DialogTitle>{t('skillDetail.revocationConfirmTitle')}</DialogTitle>
+            <DialogDescription>{t('skillDetail.revocationConfirmDescription', { skill: skill.displayName, slug: skill.slug })}</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            aria-label={t('skillDetail.revocationReasonLabel')}
+            placeholder={t('skillDetail.revocationReasonPlaceholder')}
+            value={revocationReason}
+            onChange={(event) => setRevocationReason(event.target.value)}
+            rows={3}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevocationMode(null)}>{t('dialog.cancel')}</Button>
+            <Button variant="destructive" onClick={handleSubmitRevocation} disabled={submitRevocationMutation.isPending || directRevocationMutation.isPending}>
+              {t(revocationMode === 'direct' ? 'skillDetail.directRevocation' : 'skillDetail.requestRevocation')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={archiveConfirmOpen}

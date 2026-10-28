@@ -31,6 +31,9 @@ public class Skill {
     @Column(name = "source_skill_id")
     private Long sourceSkillId;
 
+    @Column(name = "github_sync_managed", nullable = false)
+    private boolean githubSyncManaged;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SkillVisibility visibility;
@@ -41,6 +44,16 @@ public class Skill {
 
     @Column(name = "latest_version_id")
     private Long latestVersionId;
+
+    @Column(name = "active_avatar_id")
+    private Long activeAvatarId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "active_avatar_audience", length = 32)
+    private SkillVisibility activeAvatarAudience;
+
+    @Column(name = "pending_avatar_id")
+    private Long pendingAvatarId;
 
     @Column(name = "download_count", nullable = false)
     private Long downloadCount = 0L;
@@ -129,6 +142,19 @@ public class Skill {
         return sourceSkillId;
     }
 
+    public boolean isGithubSyncManaged() {
+        return githubSyncManaged;
+    }
+
+    /** Converts an administrator-confirmed existing Skill to namespace-owned GitHub sync custody. */
+    public void assignGithubSyncOwnership(String systemActorId) {
+        if (!"github-sync-publisher".equals(systemActorId)) {
+            throw new IllegalArgumentException("GitHub sync ownership requires the reserved system actor");
+        }
+        ownerId = systemActorId;
+        githubSyncManaged = true;
+    }
+
     public SkillVisibility getVisibility() {
         return visibility;
     }
@@ -140,6 +166,12 @@ public class Skill {
     public Long getLatestVersionId() {
         return latestVersionId;
     }
+
+    public Long getActiveAvatarId() { return activeAvatarId; }
+
+    public SkillVisibility getActiveAvatarAudience() { return activeAvatarAudience; }
+
+    public Long getPendingAvatarId() { return pendingAvatarId; }
 
     public Long getDownloadCount() {
         return downloadCount;
@@ -202,6 +234,10 @@ public class Skill {
         this.sourceSkillId = sourceSkillId;
     }
 
+    public void setGithubSyncManaged(boolean githubSyncManaged) {
+        this.githubSyncManaged = githubSyncManaged;
+    }
+
     public void setVisibility(SkillVisibility visibility) {
         this.visibility = visibility;
     }
@@ -213,6 +249,18 @@ public class Skill {
     public void setLatestVersionId(Long latestVersionId) {
         this.latestVersionId = latestVersionId;
     }
+
+    public void activateAvatar(Long activeAvatarId, SkillVisibility audience) {
+        this.activeAvatarId = activeAvatarId;
+        this.activeAvatarAudience = audience;
+    }
+
+    public void clearAvatar() {
+        this.activeAvatarId = null;
+        this.activeAvatarAudience = null;
+    }
+
+    public void setPendingAvatarId(Long pendingAvatarId) { this.pendingAvatarId = pendingAvatarId; }
 
     public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;

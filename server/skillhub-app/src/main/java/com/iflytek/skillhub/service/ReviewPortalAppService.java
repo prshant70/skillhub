@@ -8,6 +8,7 @@ import com.iflytek.skillhub.domain.namespace.NamespaceRepository;
 import com.iflytek.skillhub.domain.namespace.NamespaceRole;
 import com.iflytek.skillhub.domain.review.ReviewService;
 import com.iflytek.skillhub.domain.review.ReviewTask;
+import com.iflytek.skillhub.domain.review.ReviewOriginType;
 import com.iflytek.skillhub.domain.review.ReviewTaskRepository;
 import com.iflytek.skillhub.domain.review.ReviewTaskStatus;
 import com.iflytek.skillhub.domain.review.ReviewSubjectType;
@@ -137,7 +138,9 @@ public class ReviewPortalAppService {
                     reviewTaskId, suiteContext(userId, userNsRoles, auditContext));
             return;
         }
-        reviewService.withdrawReview(task.getSkillVersionId(), userId);
+        if (task.getSubjectType() == ReviewSubjectType.SKILL_METADATA) {
+            reviewService.withdrawMetadata(task, userId, platformRoles(userId));
+        } else { reviewService.withdrawReview(task.getSkillVersionId(), userId, platformRoles(userId)); }
         recordAudit(
                 "REVIEW_WITHDRAW",
                 userId,
@@ -154,6 +157,29 @@ public class ReviewPortalAppService {
                                                         String sortDirection,
                                                         String userId,
                                                         Map<Long, NamespaceRole> userNsRoles) {
+        return listReviewsByOrigin(status, namespaceId, page, size, sortDirection,
+                userId, userNsRoles, ReviewOriginType.USER);
+    }
+
+    public PageResponse<ReviewTaskResponse> listSyncReviews(String status,
+                                                            Long namespaceId,
+                                                            int page,
+                                                            int size,
+                                                            String sortDirection,
+                                                            String userId,
+                                                            Map<Long, NamespaceRole> userNsRoles) {
+        return listReviewsByOrigin(status, namespaceId, page, size, sortDirection,
+                userId, userNsRoles, ReviewOriginType.GITHUB_SYNC);
+    }
+
+    private PageResponse<ReviewTaskResponse> listReviewsByOrigin(String status,
+                                                                 Long namespaceId,
+                                                                 int page,
+                                                                 int size,
+                                                                 String sortDirection,
+                                                                 String userId,
+                                                                 Map<Long, NamespaceRole> userNsRoles,
+                                                                 ReviewOriginType originType) {
         ReviewTaskStatus reviewStatus = ReviewTaskStatus.valueOf(status.toUpperCase());
         Map<Long, NamespaceRole> namespaceRoles = normalizeRoles(userNsRoles);
         Set<String> platformRoles = platformRoles(userId);
@@ -172,12 +198,17 @@ public class ReviewPortalAppService {
                     platformRoles)) {
                 throw new DomainForbiddenException("review.no_permission");
             }
-            tasks = reviewTaskRepository.findByNamespaceIdAndStatus(namespaceId, reviewStatus, pageable);
+            tasks = originType == ReviewOriginType.USER
+                    ? reviewTaskRepository.findByNamespaceIdAndStatus(namespaceId, reviewStatus, pageable)
+                    : reviewTaskRepository.findByNamespaceIdAndOriginTypeAndStatus(
+                            namespaceId, originType, reviewStatus, pageable);
         } else {
             if (!hasPlatformReviewRole(platformRoles)) {
                 throw new DomainForbiddenException("review.no_permission");
             }
-            tasks = reviewTaskRepository.findByStatus(reviewStatus, pageable);
+            tasks = originType == ReviewOriginType.USER
+                    ? reviewTaskRepository.findByStatus(reviewStatus, pageable)
+                    : reviewTaskRepository.findByOriginTypeAndStatus(originType, reviewStatus, pageable);
         }
 
         List<ReviewTask> visibleItems = tasks.getContent().stream()
@@ -272,10 +303,10 @@ public class ReviewPortalAppService {
             throw new DomainForbiddenException("review.no_permission");
         }
 
-        List<ReviewTask> attempts = anchor.getSubjectType() == ReviewSubjectType.SUITE_VERSION
+        List<ReviewTask> attempts = anchor.getSubjectType() != null && anchor.getSubjectType() != ReviewSubjectType.SKILL_VERSION
                 ? reviewTaskRepository
                 .findBySubmittedByAndSubjectTypeAndSubjectIdAndSubjectVersionOrderBySubmittedAtDescIdDesc(
-                        userId, ReviewSubjectType.SUITE_VERSION,
+                        userId, anchor.getSubjectType(),
                         anchor.getSubjectId(), anchor.getSubjectVersion())
                 : reviewTaskRepository
                 .findBySubmittedByAndSkillIdAndSkillVersionOrderBySubmittedAtDescIdDesc(
@@ -301,10 +332,10 @@ public class ReviewPortalAppService {
             throw new DomainForbiddenException("review.no_permission");
         }
 
-        List<ReviewTask> attempts = anchor.getSubjectType() == ReviewSubjectType.SUITE_VERSION
+        List<ReviewTask> attempts = anchor.getSubjectType() != null && anchor.getSubjectType() != ReviewSubjectType.SKILL_VERSION
                 ? reviewTaskRepository
                 .findBySubjectTypeAndSubjectIdAndSubjectVersionOrderBySubmittedAtDescIdDesc(
-                        ReviewSubjectType.SUITE_VERSION,
+                        anchor.getSubjectType(),
                         anchor.getSubjectId(), anchor.getSubjectVersion())
                 : reviewTaskRepository
                 .findBySkillIdAndSkillVersionOrderBySubmittedAtDescIdDesc(

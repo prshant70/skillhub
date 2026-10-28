@@ -66,6 +66,10 @@ $env:SKILLHUB_REGISTRY="https://skillhub.example.com"
 set SKILLHUB_REGISTRY=https://skillhub.example.com
 ```
 
+For registries mounted below a URL prefix, include it in `--registry` (for example,
+`https://skillhub.example.com/skillhub`). Installation and namespace synchronization
+retain that prefix when following application-relative download URLs.
+
 ## 🔐 Authentication
 
 `skillhub login` uses OAuth Device Flow when no API token is supplied. Token resolution priority for
@@ -237,6 +241,7 @@ Most Agents have both project-level and user-level skills directories. Use `--sc
 | `opencode` | `<project>/.opencode/skills/` | `~/.opencode/skills/` |
 | `kilo` | `<project>/.kilo/skills/` | `~/.kilo/skills/` |
 | `pi` (Pi) | `<project>/.pi/skills/` | `~/.pi/agent/skills/` |
+| `zcode` | `<project>/.zcode/skills/` | `~/.zcode/skills/` |
 | _fallback_ | `<project>/.agents/skills/` | `~/.agents/skills/` |
 
 For a custom path or an unsupported Agent directory, use `--dir` to specify the installation path. In interactive user scope, the `generic` target is offered alongside detected Agent targets. AStudio appears in that selector when `~/.acode/skills/` exists. When `--scope user|project` finds no matching agent directory, the CLI falls back to the `_fallback_` row above.
@@ -294,8 +299,8 @@ The source identity is `registry + namespace + slug`. `--force` may replace loca
 that full identity matches the installation metadata; it never overwrites an unmanaged directory or
 a Skill installed from another source.
 
-All targets in one inventory entry are upgraded together. A filter that selects only part of that
-entry is rejected because the current inventory format stores one shared version for all targets.
+Each selected installation position is upgraded independently. Filters can select one position;
+unselected positions keep their own versions and content. Plans and results report one row per position.
 The command also keeps the local files when the registry resolves to an older version.
 If a multi-Skill run fails after an earlier upgrade commits, execution stops and reports each item
 as `upgraded`, `failed`, or `not-attempted`; a committed upgrade is never rolled back implicitly.
@@ -562,3 +567,63 @@ skillhub doctor
 Apache-2.0
 
 Copyright 2026 iFlytek Co., Ltd.
+
+## Packaged task examples
+
+Authors can include `.skillhub/examples.json` in a skill package. The file stays at the same
+path after publishing and installation. It is versioned skill content, including when its
+JSON does not conform to the examples protocol; local edits are protected by existing
+upgrade/sync integrity checks. No separate Web configuration is required.
+
+```json
+{
+  "schemaVersion": 1,
+  "defaultLocale": "zh-CN",
+  "examples": {
+    "zh-CN": [{ "id": "summary", "title": "整理纪要", "prompt": "请用 {{skill}} 整理会议记录。" }],
+    "en": [{ "id": "summary", "title": "Summarize notes", "prompt": "Use {{skill}} to summarize meeting notes." }]
+  }
+}
+```
+
+The native DSH plugin recognizes this bounded UTF-8 declaration and offers editable task
+prompts. Unsupported declarations remain ordinary package files. See the
+[protocol and limits](../openspec/changes/add-dsh-native-plugin/skill-examples-design.md).
+Only `.skillhub/metadata.json` is an installer-owned record: directory publishing and sync
+push omit it, and installation rejects a package that supplies it (including path aliases).
+Other authored `.skillhub` files are retained and fingerprinted.
+
+Older consumers that ignore the whole `.skillhub` directory do not support packages with
+these files. Publish/install them only with lifecycle-capable CLI/plugin builds; old package
+bytes and published fingerprints must remain unchanged. This is not transparent backward
+compatibility for existing binaries.
+
+Directory and ZIP publishing (`publish`, including `--dry-run`, and `sync push`) inspect the
+actual outgoing archive for task examples. Human output reports the recognition summary;
+`--json` keeps it in `examplesStatus`, `examplesCount` and `warnings` fields. Counts include
+all declared languages. An unsupported declaration generates a nonblocking warning and is
+still uploaded unchanged; an unreadable archive produces an inspection warning and remains
+subject to the server's package validation.
+
+### Installation inventory compatibility
+
+The local installation inventory uses schema version 2. Each installation directory owns its
+version, fingerprint, timestamp and ownership, so a user installation and a project installation
+of the same skill can remain on different versions. `list --json` reports the actual version for
+each target. `upgrade --check --json` and upgrade results contain one row per selected installation
+position; the same coordinate can therefore occur more than once with different versions and
+`targets`. `--dir` or `--agent` selects positions without updating unselected siblings.
+Direct install/upgrade/remove and sync pruning refuse Suite-owned or shared positions, even
+with `--force`. Manage those positions through Suite commands; unrelated direct installations
+remain independently manageable.
+
+Reading a legacy inventory does not change it. The first mutation validates it, creates a
+byte-verified `inventory.v1.<sha256>.backup.json` beside `inventory.json`, and atomically writes
+v2 (`schemaVersion`, `records`, `suites`). Missing legacy fingerprint evidence stays missing.
+Unknown schemas and ambiguous ownership stop the operation before skill files are changed.
+
+Upgrade the CLI and DSH plugin together when they manage the same installation inventory. Stop
+old writers and allow each DSH host to finish pending recovery before the first v2 mutation;
+the CLI cannot discover every host's private operation directory. Old clients do not understand
+v2 and must not be used to mutate these installations. A saved v1 inventory is recovery evidence,
+not a rollback command: restoring it alone after targets diverged would misrepresent files on disk.

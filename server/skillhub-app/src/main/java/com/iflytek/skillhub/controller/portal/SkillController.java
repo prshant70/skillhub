@@ -22,11 +22,18 @@ import com.iflytek.skillhub.dto.SkillVersionCompareLineResponse;
 import com.iflytek.skillhub.dto.SkillVersionCompareResponse;
 import com.iflytek.skillhub.dto.SkillVersionDetailResponse;
 import com.iflytek.skillhub.dto.SkillVersionResponse;
+import com.iflytek.skillhub.repository.GithubSkillSourceQueryRepository;
 import com.iflytek.skillhub.metrics.SkillHubMetrics;
 import com.iflytek.skillhub.ratelimit.RateLimit;
 import com.iflytek.skillhub.service.SkillLabelAppService;
+import com.iflytek.skillhub.service.SkillAvatarUrls;
+import com.iflytek.skillhub.domain.skill.SkillVisibility;
 import com.iflytek.skillhub.service.ComplianceSnapshotProjectionService;
 import com.iflytek.skillhub.service.SkillSuiteAppService;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -59,6 +66,7 @@ public class SkillController extends BaseApiController {
     private final ComplianceSnapshotProjectionService complianceSnapshotProjectionService;
     private final SkillSuiteAppService skillSuiteAppService;
     private final SkillHubMetrics metrics;
+    private final GithubSkillSourceQueryRepository githubSkillSourceQueryRepository;
 
     public SkillController(
             SkillQueryService skillQueryService,
@@ -67,6 +75,7 @@ public class SkillController extends BaseApiController {
             ComplianceSnapshotProjectionService complianceSnapshotProjectionService,
             SkillSuiteAppService skillSuiteAppService,
             SkillHubMetrics metrics,
+            GithubSkillSourceQueryRepository githubSkillSourceQueryRepository,
             ApiResponseFactory responseFactory) {
         super(responseFactory);
         this.skillQueryService = skillQueryService;
@@ -75,6 +84,7 @@ public class SkillController extends BaseApiController {
         this.complianceSnapshotProjectionService = complianceSnapshotProjectionService;
         this.skillSuiteAppService = skillSuiteAppService;
         this.metrics = metrics;
+        this.githubSkillSourceQueryRepository = githubSkillSourceQueryRepository;
     }
 
     /**
@@ -93,7 +103,7 @@ public class SkillController extends BaseApiController {
         Set<String> platformRoles = principal == null || principal.platformRoles() == null
                 ? Set.of() : principal.platformRoles();
         SkillQueryService.SkillDetailDTO detail = skillQueryService.getSkillDetail(
-                namespace, slug, userId, namespaceRoles);
+                namespace, slug, userId, namespaceRoles, platformRoles);
         PageResponse<SkillSuiteReferenceResponse> memberOfSuites =
                 skillSuiteAppService.findVisibleMemberships(
                         detail.id(), userId, namespaceRoles, platformRoles, 0, 20);
@@ -127,7 +137,15 @@ public class SkillController extends BaseApiController {
                 memberOfSuites.items().stream()
                         .filter(SkillSuiteReferenceResponse::currentSkillEntry)
                         .toList(),
-                memberOfSuites
+                memberOfSuites,
+                SkillVisibility.PRIVATE == SkillVisibility.valueOf(detail.visibility())
+                        && !detail.ownerId().equals(userId) ? null
+                        : SkillAvatarUrls.current(detail.activeAvatarId(), detail.activeAvatarAudience(),
+                                SkillVisibility.valueOf(detail.visibility()), namespace, detail.slug()),
+                detail.ownerReadOnly(),
+                detail.publishedVersion() == null ? null
+                        : githubSkillSourceQueryRepository.findPublishedVersion(detail.publishedVersion().id())
+                                .orElse(null)
         );
 
         return ok("response.success.read", response);
@@ -164,10 +182,13 @@ public class SkillController extends BaseApiController {
             @PathVariable String slug,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "false") boolean downloadableOnly,
             @RequestAttribute(value = "userId", required = false) String userId,
             @RequestAttribute(value = "userNsRoles", required = false) Map<Long, NamespaceRole> userNsRoles) {
 
-        Page<SkillVersion> versions = skillQueryService.listVersions(
+        Page<SkillVersion> versions = downloadableOnly ? skillQueryService.listVersions(
+                namespace, slug, userId, userNsRoles != null ? userNsRoles : Map.of(),
+                PageRequest.of(page, size), true) : skillQueryService.listVersions(
                 namespace,
                 slug,
                 userId,
@@ -177,12 +198,13 @@ public class SkillController extends BaseApiController {
         PageResponse<SkillVersionResponse> response = PageResponse.from(versions.map(v -> new SkillVersionResponse(
                 v.getId(),
                 v.getVersion(),
+                v.getGithubSyncRevision(),
                 v.getStatus().name(),
                 v.getChangelog(),
                 v.getFileCount(),
                 v.getTotalSize(),
                 v.getPublishedAt(),
-                skillQueryService.isDownloadAvailable(v),
+                skillQueryService.isDownloadAvailable(v, userId),
                 complianceSnapshotProjectionService.fromParsedMetadataJson(v.getParsedMetadataJson())
         )));
 
@@ -312,6 +334,10 @@ public class SkillController extends BaseApiController {
      * application API.
      */
     @GetMapping("/{namespace}/{slug}/versions/{version}/file")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+            description = "Raw packaged file content; SKILL.md is UTF-8, without a JSON envelope",
+            content = @Content(mediaType = MediaType.APPLICATION_OCTET_STREAM_VALUE,
+                    schema = @Schema(type = "string", format = "binary")))
     public ResponseEntity<InputStreamResource> getFileContent(
             @PathVariable String namespace,
             @PathVariable String slug,
@@ -411,6 +437,16 @@ public class SkillController extends BaseApiController {
     }
 
     @GetMapping("/{namespace}/{slug}/versions/{version}/download")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "Complete skill archive",
+                    content = @Content(mediaType = "application/zip",
+                            schema = @Schema(type = "string", format = "binary"))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "302",
+                    description = "Download from the object-storage URL in Location",
+                    headers = @Header(name = HttpHeaders.LOCATION, required = true,
+                            schema = @Schema(type = "string", format = "uri")), content = @Content)
+    })
     @RateLimit(category = "download", authenticated = 120, anonymous = 30)
     public ResponseEntity<InputStreamResource> downloadVersion(
             @PathVariable String namespace,
@@ -490,7 +526,8 @@ public class SkillController extends BaseApiController {
         if (projection == null) {
             return null;
         }
-        return new SkillLifecycleVersionResponse(projection.id(), projection.version(), projection.status());
+        return new SkillLifecycleVersionResponse(projection.id(), projection.version(), projection.status(),
+                projection.displayName(), projection.summary(), projection.syncRevision());
     }
 
     private SkillVersionCompareResponse toCompareResponse(SkillQueryService.SkillVersionCompareDTO compare) {

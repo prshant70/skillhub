@@ -9,6 +9,8 @@ import com.iflytek.skillhub.domain.skill.SkillVersion;
 import com.iflytek.skillhub.domain.skill.service.SkillDownloadService;
 import com.iflytek.skillhub.domain.skill.service.SkillQueryService;
 import com.iflytek.skillhub.dto.SkillSuiteReferenceResponse;
+import com.iflytek.skillhub.dto.GithubSkillSourceResponse;
+import com.iflytek.skillhub.repository.GithubSkillSourceQueryRepository;
 import com.iflytek.skillhub.service.SkillLabelAppService;
 import com.iflytek.skillhub.service.SkillSuiteAppService;
 import org.junit.jupiter.api.Test;
@@ -20,17 +22,27 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.TimeZone;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -54,6 +66,126 @@ class SkillControllerTest {
 
     @MockBean
     private SkillSuiteAppService skillSuiteAppService;
+
+    @MockBean
+    private GithubSkillSourceQueryRepository githubSkillSourceQueryRepository;
+
+    @Test
+    void getSkillDetailShouldExposeOnlyPublishedGithubSource() throws Exception {
+        when(skillQueryService.getSkillDetail(eq("team"), eq("demo"), eq((String) null), eq(Map.of()), eq(Set.of())))
+                .thenReturn(publishedGithubSkill());
+        when(skillSuiteAppService.findVisibleMemberships(
+                eq(1L), eq((String) null), eq(Map.of()), anySet(), eq(0), eq(20)))
+                .thenReturn(new com.iflytek.skillhub.dto.PageResponse<>(List.of(), 0, 0, 20));
+        when(githubSkillSourceQueryRepository.findPublishedVersion(10L))
+                .thenReturn(Optional.of(new GithubSkillSourceResponse(
+                        "upstream", "skills", "agents/demo", "a".repeat(40),
+                        2, "PRESENT_UNCLASSIFIED", List.of(new GithubSkillSourceResponse.LicenseDocument(
+                        "REPOSITORY_ROOT", "LICENSE", true)))));
+
+        mockMvc.perform(get("/api/web/skills/team/demo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.githubSource.ownerLogin").value("upstream"))
+                .andExpect(jsonPath("$.data.githubSource.skillPath").value("agents/demo"))
+                .andExpect(jsonPath("$.data.githubSource.commitSha").value("a".repeat(40)))
+                .andExpect(jsonPath("$.data.githubSource.licenseDocuments[0].path").value("LICENSE"))
+                .andExpect(jsonPath("$.data.githubSource.ingestionStatus").doesNotExist());
+    }
+
+    @Test
+    void getSkillDetailShouldNotReadGithubSourceWhenTeamSkillIsForbidden() throws Exception {
+        when(skillQueryService.getSkillDetail(eq("team"), eq("demo"), eq((String) null), eq(Map.of()), eq(Set.of())))
+                .thenThrow(new DomainForbiddenException("error.skill.access.denied", "demo"));
+
+        mockMvc.perform(get("/api/web/skills/team/demo"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.data.githubSource").doesNotExist());
+        verifyNoInteractions(githubSkillSourceQueryRepository);
+    }
+
+    private SkillQueryService.SkillDetailDTO publishedGithubSkill() {
+        return new SkillQueryService.SkillDetailDTO(
+                1L, "demo", "Demo", "owner-1", "Alice", "Synced skill",
+                "PRIVATE", "ACTIVE", 0L, 0, 0, null, 0, false, 1L,
+                Instant.parse("2026-03-15T10:00:00Z"),
+                Instant.parse("2026-03-15T10:00:00Z"),
+                false, false, true, true,
+                new com.iflytek.skillhub.domain.skill.service.SkillLifecycleProjectionService.VersionProjection(
+                        10L, "1.0.0", "PUBLISHED"),
+                new com.iflytek.skillhub.domain.skill.service.SkillLifecycleProjectionService.VersionProjection(
+                        10L, "1.0.0", "PUBLISHED"),
+                null, null, "PUBLISHED", null, null);
+    }
+
+    @Test
+    void generatedOpenApiDescribesNativeRegistryFileAndDownloadContracts() throws Exception {
+        var response = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/v1/skills/{namespace}/{slug}/versions/{version}/file'].get.responses['200'].content['application/octet-stream'].schema.format").value("binary"))
+                .andExpect(jsonPath("$.paths['/api/v1/skills/{namespace}/{slug}/versions/{version}/download'].get.responses['200'].content['application/zip'].schema.format").value("binary"))
+                .andExpect(jsonPath("$.paths['/api/v1/skills/{namespace}/{slug}/versions/{version}/download'].get.responses['302'].headers.Location.schema.format").value("uri"))
+                .andExpect(jsonPath("$.components.schemas.CliResolveResponse.required.length()").value(6))
+                .andExpect(jsonPath("$.components.schemas.SkillVersionResponse.properties.changelog.nullable").value(true))
+                .andReturn().getResponse();
+        Files.writeString(Path.of("target", "registry-openapi.json"), response.getContentAsString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void anonymousVersionDownloadRetainsStreamAndRedirectDelivery() throws Exception {
+        byte[] archive = new byte[] {80, 75, 3, 4};
+        when(skillDownloadService.downloadVersion("team", "demo", "1.0.0", null, Map.of()))
+                .thenReturn(new SkillDownloadService.DownloadResult(() -> new ByteArrayInputStream(archive),
+                        "demo.zip", archive.length, "application/zip", null, false));
+        mockMvc.perform(get("/api/v1/skills/team/demo/versions/1.0.0/download"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/zip"))
+                .andExpect(content().bytes(archive));
+
+        when(skillDownloadService.downloadVersion("team", "demo", "1.0.0", null, Map.of()))
+                .thenReturn(new SkillDownloadService.DownloadResult(() -> { throw new AssertionError("Redirect must not open content"); },
+                        "demo.zip", archive.length, "application/zip", "https://storage.example/demo.zip", false));
+        mockMvc.perform(get("/api/v1/skills/team/demo/versions/1.0.0/download"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://storage.example/demo.zip"))
+                .andExpect(content().string(""));
+    }
+
+    @Test
+    void anonymousFixedVersionFileReturnsRawUtf8ForNativeClients() throws Exception {
+        byte[] markdown = "# 技能说明\nRead references/note.md.\n".getBytes(StandardCharsets.UTF_8);
+        when(skillQueryService.getFileContent(
+                "team", "demo", "1.0.0", "SKILL.md", null, Map.of()))
+                .thenReturn(new ByteArrayInputStream(markdown));
+
+        mockMvc.perform(get("/api/v1/skills/team/demo/versions/1.0.0/file")
+                        .param("path", "SKILL.md")
+                        .accept("text/plain"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/octet-stream"))
+                .andExpect(content().bytes(markdown));
+    }
+
+    @Test
+    void anonymousVersionProbePreservesPageSizeAndNullableFields() throws Exception {
+        SkillVersion version = new SkillVersion(1L, "1.0.0", "owner-1");
+        var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
+        when(skillQueryService.listVersions("team", "demo", null, Map.of(), pageable))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(version), pageable, 3));
+        when(skillQueryService.isDownloadAvailable(eq(version), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/skills/team/demo/versions").param("page", "0").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.size").value(1))
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].version").value("1.0.0"))
+                .andExpect(jsonPath("$.data.items[0].downloadAvailable").value(true))
+                .andExpect(jsonPath("$.data.items[0]").value(org.hamcrest.Matchers.hasKey("changelog")))
+                .andExpect(jsonPath("$.data.items[0].changelog").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.items[0]").value(org.hamcrest.Matchers.hasKey("publishedAt")))
+                .andExpect(jsonPath("$.data.items[0].publishedAt").value(org.hamcrest.Matchers.nullValue()));
+    }
 
     @Test
     void getVersionDetailShouldReturnMetadataFields() throws Exception {
@@ -159,7 +291,7 @@ class SkillControllerTest {
                 eq("team"),
                 eq("demo"),
                 eq((String) null),
-                eq(Map.<Long, NamespaceRole>of())))
+                eq(Map.<Long, NamespaceRole>of()), org.mockito.ArgumentMatchers.anySet()))
                 .thenReturn(new SkillQueryService.SkillDetailDTO(
                         1L,
                         "demo",
@@ -186,7 +318,9 @@ class SkillControllerTest {
                         null,
                         new com.iflytek.skillhub.domain.skill.service.SkillLifecycleProjectionService.VersionProjection(11L, "1.1.0", "PENDING_REVIEW"),
                         null,
-                        "OWNER_PREVIEW"
+                        "OWNER_PREVIEW",
+                        null,
+                        null
                 ));
         SkillSuiteReferenceResponse suiteReference = new SkillSuiteReferenceResponse(
                 9L, "team", "demo-suite", "Demo Suite", "2.0.0", 3,
@@ -219,7 +353,7 @@ class SkillControllerTest {
                 eq("team"),
                 eq("demo"),
                 eq((String) null),
-                eq(Map.<Long, NamespaceRole>of())))
+                eq(Map.<Long, NamespaceRole>of()), org.mockito.ArgumentMatchers.anySet()))
                 .thenThrow(new DomainForbiddenException("error.namespace.archived", "team"));
 
         mockMvc.perform(get("/api/web/skills/team/demo"))
@@ -246,6 +380,24 @@ class SkillControllerTest {
     }
 
     @Test
+    void downloadableVersionFilterShouldPreserveFilteredPagination() throws Exception {
+        SkillVersion version = new SkillVersion(1L, "2.0.0", "owner-1");
+        var pageable = org.springframework.data.domain.PageRequest.of(1, 1);
+        when(skillQueryService.listVersions("team", "demo", null, Map.of(), pageable, true))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(version), pageable, 3));
+        when(skillQueryService.isDownloadAvailable(eq(version), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/skills/team/demo/versions")
+                        .param("downloadableOnly", "true").param("page", "1").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.total").value(3))
+                .andExpect(jsonPath("$.data.items[0].version").value("2.0.0"))
+                .andExpect(jsonPath("$.data.items[0].downloadAvailable").value(true));
+        verify(skillQueryService).listVersions("team", "demo", null, Map.of(), pageable, true);
+    }
+
+    @Test
     void listVersionsShouldExposeDownloadAvailability() throws Exception {
         SkillVersion version = new SkillVersion(1L, "1.0.0", "owner-1");
         version.setParsedMetadataJson("""
@@ -258,7 +410,7 @@ class SkillControllerTest {
                 eq(Map.<Long, NamespaceRole>of()),
                 any()))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(version)));
-        when(skillQueryService.isDownloadAvailable(version)).thenReturn(false);
+        when(skillQueryService.isDownloadAvailable(eq(version), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(false);
 
         mockMvc.perform(get("/api/v1/skills/team/demo/versions"))
                 .andExpect(status().isOk())

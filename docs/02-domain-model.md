@@ -16,7 +16,7 @@
 | id | bigint | 主键 |
 | slug | varchar(64) | URL 友好标识 |
 | display_name | varchar(128) | 展示名 |
-| type | enum | `GLOBAL` / `TEAM` |
+| type | enum | `GLOBAL` / `CATALOG` / `TEAM` |
 | description | text | 描述 |
 | avatar_url | varchar(512) | 头像 |
 | status | enum | `ACTIVE` / `FROZEN` / `ARCHIVED` |
@@ -25,11 +25,13 @@
 | updated_at | datetime | |
 
 - `GLOBAL` 类型全局唯一（只有一个 `@global`），由平台管理员管理
+- `CATALOG` 为系统管理的来源目录；首个 `@github` 通过迁移创建，普通用户不能修改或删除
+- `@github` 迁移同时创建不可登录的系统 actor `github-sync-publisher`；若 namespace slug 或 actor ID 已被占用，迁移明确失败而不接管已有记录
 - `TEAM` 类型对应部门/团队，可创建多个
 - 技能完整寻址：`@{namespace_slug}/{skill_slug}`
 - slug 唯一约束：`slug`
 - slug 格式校验：`[a-z0-9]([a-z0-9-]*[a-z0-9])?`，长度 2-64，且不得包含连续两个以上的连字符 `--`（为兼容层坐标映射保留）
-- slug 保留词列表（用户创建 namespace 时不可使用）：`admin`, `api`, `dashboard`, `search`, `auth`, `me`, `global`, `system`, `static`, `assets`, `health`
+- slug 保留词列表（用户创建 namespace 时不可使用）：`admin`, `api`, `dashboard`, `search`, `auth`, `me`, `global`, `github`, `system`, `static`, `assets`, `health`；`github` 仅在 namespace 创建入口保留，不禁止同名 Skill
 - 系统内置 namespace（`@global`）在数据库初始化时由 Flyway 脚本预置，绕过 slug 校验规则。保留词校验仅作用于用户创建 namespace 的接口
 - 状态语义：
   - `ACTIVE`：正常使用
@@ -61,11 +63,11 @@
 | slug | varchar(128) | URL 友好标识 |
 | display_name | varchar(256) | |
 | summary | varchar(512) | |
-| owner_id | varchar(128) | 主要维护人（可转让） |
+| owner_id | varchar(128) | 当前技能所有者；不等同于命名空间 OWNER，当前无独立技能转让入口 |
 | source_skill_id | bigint | 派生来源（团队技能提升到全局时记录原 skill ID），nullable |
 | visibility | enum | `PUBLIC` / `NAMESPACE_ONLY` / `PRIVATE` |
 | status | enum | `ACTIVE` / `ARCHIVED` |
-| latest_version_id | bigint | latest published pointer，仅指向最新 `PUBLISHED` 版本；若不存在已发布版本则可为 `null` |
+| latest_version_id | bigint | 内部生命周期指针；PRIVATE 上传可指向未发布版本。对外最新发布版本由 `publishedVersion` 解析，不直接以此字段授权 |
 | download_count | bigint | |
 | star_count | int | |
 | rating_avg | decimal(3,2) | 平均评分 |
@@ -75,22 +77,24 @@
 | updated_by | varchar(128) | |
 | updated_at | datetime | |
 
-- 唯一约束：`(namespace_id, slug)`
+- 唯一约束：`(namespace_id, slug, owner_id)`；面向公众的同名冲突还须按已发布记录检查不同 owner，避免地址解析歧义
 - `status` 表示 skill 容器生命周期，不再承载“隐藏”语义。隐藏是独立的治理覆盖层，由 `hidden` / `hidden_at` / `hidden_by` 表达
-- 当前代码下的实际可见性判定以 `VisibilityChecker` 为准，规则如下：
+- 容器可见性判定以 `VisibilityChecker` 为准；传入 `SUPER_ADMIN` 平台角色时该检查短路放行，但不表示所有调用方都传入角色，也不绕过调用方的其他限制。普通调用规则如下：
   - 若 `hidden=true`：仅 skill owner 或该 namespace 的 `ADMIN` / `OWNER` 可读
   - 若 `latest_version_id is null`：仅 skill owner 可读；即使 `visibility=PUBLIC` 也不会对外公开
   - `PUBLIC`：任意人可读 skill 容器与已发布版本
-  - `NAMESPACE_ONLY`：该 namespace 任意成员可读（`MEMBER` / `ADMIN` / `OWNER`）
+  - `NAMESPACE_ONLY`：该 namespace 任意成员及当前技能 owner 可读；owner 被移出 TEAM 空间后保留自己内容的只读访问
   - `PRIVATE`：仅 skill owner 或该 namespace 的 `ADMIN` / `OWNER` 可读，普通 `MEMBER` 不可读
-- `owner_id` 语义为"主要维护人"，可转让。权限主轴是 namespace role，不是 owner：
-  - namespace ADMIN 对空间内所有 skill 有完整管理权（归档、版本管理、提升到全局），不受 owner 限制
-  - owner 作为 MEMBER 时可管理自己创建的 skill（提交审核、编辑草稿）
-  - owner 离职/换组后，namespace ADMIN 仍能完整管理所有技能
+- `owner_id` 表示当前技能所有者，空间角色与技能所有权分别参与授权：
+  - 正常账号且仍为 TEAM 空间成员的 owner 按既有规则维护自己的 skill。
+  - 被移出 TEAM 空间但仍是当前 owner 时，可以查看、下载自己的内容，不能凭 owner 身份继续写入；不自动转移技能或所有权。
+  - 账号正常、重新加入且仍为 owner 时恢复正常维护权限；停用账号继续服从认证层限制。
+  - namespace ADMIN/OWNER 与平台角色的既有独立治理、审核权限保持不变，不因本条成为内容作者，也不新增全员覆盖能力。
+  - 历史提交人不是当前 owner 时，按普通可见性与已有角色判断访问，不获得永久私有内容读取权。
 - `rating_avg` / `rating_count` 冗余字段，避免每次查询聚合
 - `slug`：面向用户的 URL 标识，来自 SKILL.md 的 `name` 字段，首次发布后不可变更。slug 格式校验规则与 namespace slug 相同：`[a-z0-9]([a-z0-9-]*[a-z0-9])?`，同样适用保留词限制，且不得包含连续两个以上的连字符 `--`（为兼容层坐标映射保留）。全局空间（`@global`）下的 skill slug 额外禁止包含 `--`，以避免与兼容层 canonical slug 产生歧义
 - `source_skill_id`：仅在"团队技能提升到全局"场景下填充，记录原始团队空间的 skill ID，用于追溯来源
-- 提升关系的唯一事实来源是 `promotion_request` 表，UI 查询"是否已提升"通过 `SELECT ... FROM promotion_request WHERE source_skill_id=? AND status='APPROVED'` 判定
+- 提升关系的唯一事实来源是 `promotion_request` 表。当前有效全局目标由 `request_kind='INITIAL' AND status='APPROVED' AND target_skill_id IS NOT NULL` 的首次提升记录确定；后续更新记录指向同一目标，撤销时解除目标引用并保留快照。
 
 ### skill_version
 
@@ -98,43 +102,24 @@
 |------|------|------|
 | id | bigint | |
 | skill_id | bigint | |
-| version | varchar(32) | semver |
+| version | varchar(32) | 版本标识；可来自 SKILL.md 或系统生成，不按字符串大小判断“最新” |
 | version_sort | bigint | 排序用数值 |
 | changelog | text | |
 | manifest_json | json | 文件清单 |
 | parsed_metadata_json | json | SKILL.md frontmatter 解析结果 |
-| status | enum | `DRAFT` / `PENDING_REVIEW` / `PUBLISHED` / `REJECTED` / `YANKED` |
+| status | enum | `DRAFT` / `SCANNING` / `SCAN_FAILED` / `UPLOADED` / `PENDING_REVIEW` / `PUBLISHED` / `REJECTED` / `YANKED` |
 | reject_reason | varchar(512) | 拒绝原因 |
 | published_by | varchar(128) | |
 | published_at | datetime | |
 | created_at | datetime | |
 
 - `status` 表示 version 发布生命周期，和 skill 容器状态、review task 状态分离
-- 当前代码下的实际迁移约束：
-  - 普通用户首次上传/重传新版本后，版本直接进入 `PENDING_REVIEW`
-  - `SUPER_ADMIN` 直发时可直接进入 `PUBLISHED`
-  - 审核通过：`PENDING_REVIEW → PUBLISHED`
-  - 审核拒绝：`PENDING_REVIEW → REJECTED`
-  - 撤回审核：`PENDING_REVIEW → DRAFT`
-  - 已发布撤回：`PUBLISHED → YANKED`
-- 唯一约束：`(skill_id, version)` 防止重复发布
-- `YANKED` 状态：已发布后撤回
-- 当前代码下的实际读权限补充：
-  - 普通详情 / 下载 / resolve / tag / 文件读取，只接受 `PUBLISHED`
-  - owner 可通过常规版本详情预览自己的 `PENDING_REVIEW` 版本
-  - owner / namespace `ADMIN` / `OWNER` 在版本列表中可看到全部五种状态：`PUBLISHED / PENDING_REVIEW / DRAFT / REJECTED / YANKED`
-  - 但常规版本详情接口并不会放行 `DRAFT / REJECTED / YANKED`
-  - 审核详情页走独立 review 读路径，可查看待审版本及完整版本快照
-
-版本号不可变性规则：
-
-| 版本状态 | 版本号处理 |
-|---------|-----------|
-| DRAFT | 可删除该版本记录，重新使用同版本号 |
-| PENDING_REVIEW | 可撤回到 DRAFT |
-| REJECTED | 可删除该版本记录，重新使用同版本号 |
-| PUBLISHED | 版本号永久占用，不可复用 |
-| YANKED | 版本号永久占用，不可复用，版本列表中显示但标记为不可下载 |
+- 完整状态定义、上传/扫描/审核转换和治理操作以 [生命周期文档](./14-skill-lifecycle.md) 为准；`DRAFT` 保留为旧数据兼容状态，当前撤回审核回到 `UPLOADED`。
+- 上传结果取决于请求可见性、扫描配置与发布权限，不能统一描述为“普通用户直接待审”或“超管发布即代表可安装”。
+- 唯一约束：`(skill_id, version)` 防止重复版本记录；已发布版本不可原地覆盖。允许删除的未发布版本删除后可复用版本号，但不能删除技能的最后一个版本。
+- `YANKED` 表示已发布后撤回，版本记录和版本号仍保留，不可下载。
+- 版本列表、详情/文件预览、下载与公共分发是不同权限路径：管理者能预览的版本不一定能下载，`UPLOADED` / `PENDING_REVIEW` 的受限下载也不代表对外发布。具体边界见 [生命周期文档的对外协议与权限章节](./14-skill-lifecycle.md)。
+- 审核详情使用独立 review 读路径，可查看审核快照；不能由普通详情的访问规则推导审核权限。
 
 ### skill_file
 
@@ -163,7 +148,7 @@
 | updated_by | varchar(128) | |
 | updated_at | datetime | |
 
-- `latest` 是系统保留标签，只读，自动跟随 `skill.latest_version_id`；其语义严格等价于“最新已发布版本”，不允许 API 手动移动
+- `latest` 是系统保留标签，不允许 API 手动移动。当前标签列表在读取授权后按原始 `latest_version_id` 动态合成，不检查目标版本状态，因此 PRIVATE 上传的未发布指针也可能反映到授权用户的列表中；标签存在不等于可公开分发，下载仍需通过授权、版本状态与就绪检查
 - 自定义标签（如 `beta`、`stable-2026q1`）允许人工创建和移动
 - 唯一约束：`(skill_id, tag_name)`
 - `target_version_id` 必须指向 `status = PUBLISHED` 的版本，应用层校验
@@ -185,7 +170,7 @@
 
 - 仅用于普通发布审核，"提升到全局"使用独立的 `promotion_request` 表
 - `version` 字段用于乐观锁，防止多 Pod 并发审核
-- 业务约束：同一 `skill_version_id` 在 `status=PENDING` 时只能存在一条记录，重复提交返回 409 Conflict。撤回时删除 `PENDING` review_task，并将 `skill_version` 回退到 `DRAFT`
+- 业务约束：同一 `skill_version_id` 在 `status=PENDING` 时只能存在一条记录，重复提交返回 409 Conflict。撤回时删除 `PENDING` review_task，并将 `skill_version` 回退到 `UPLOADED`
 - PostgreSQL 并发约束落地：通过唯一索引 `(skill_version_id)` + 软删除标记实现。`review_task` 表增加 `deleted` 字段（bigint, 默认 0），唯一索引改为 `(skill_version_id, deleted)`。撤回时将 `deleted` 设为 `id`（非零值），新提交时 `deleted=0`，利用唯一索引防止并发重复提交。或者采用更简单的方案：撤回时物理删除 review_task 记录，依赖 `INSERT` 的唯一约束 `(skill_version_id)` 防并发。PostgreSQL 还支持 partial unique index 方案：`CREATE UNIQUE INDEX ON review_task (skill_version_id) WHERE status = 'PENDING'`，更优雅地实现"PENDING 状态唯一"约束
 
 ### promotion_request
@@ -197,6 +182,11 @@
 | source_version_id | bigint | 申请提升的版本 |
 | target_namespace_id | bigint | 目标全局 namespace |
 | target_skill_id | bigint | 审批通过后生成的全局 skill ID，nullable |
+| request_kind | varchar(16) | `INITIAL` / `UPDATE`；存量记录迁移为 `INITIAL` |
+| target_version_id | bigint | 审批形成的全局版本 ID 快照，允许目标撤销后保留 |
+| target_skill_id_snapshot | bigint | 撤销后仍保留原全局 skill ID |
+| target_version_id_snapshot | bigint | 撤销后保留结果版本 ID |
+| revoked_at / revoked_by | datetime / varchar(128) | 撤销生效时间和操作者 |
 | status | enum | `PENDING` / `APPROVED` / `REJECTED` |
 | version | int | 乐观锁版本号，默认 1 |
 | submitted_by | varchar(128) | 提交人 |
@@ -205,11 +195,18 @@
 | submitted_at | datetime | |
 | reviewed_at | datetime | |
 
-- 完整表达"哪个团队 skill 的哪一版被申请提升到哪个全局空间"
-- 审批通过后填充 `target_skill_id`，指向全局空间新创建的 skill
+- 完整表达"哪个团队 skill 的哪一版被申请提升到哪个全局空间"。首次提升新建目标 skill；后续 UPDATE 在同一目标下增加不可变版本，两次发布审核分开进行。
+- 审批通过后填充 `target_skill_id`，指向当前关联的全局 skill；撤销后清空该外键并保留快照和提升历史。
 - `promotion_request` 是提升关系的唯一事实来源，skill 表不再冗余 `promoted_to_skill_id`
-- 业务约束：同一 `source_version_id` 在 `status=PENDING` 时只能存在一条记录，重复提交返回 409 Conflict
-- PostgreSQL 并发约束落地：与 `review_task` 类似，通过唯一索引防止并发重复提交。推荐使用 partial unique index：`CREATE UNIQUE INDEX ON promotion_request (source_version_id) WHERE status = 'PENDING'`，或增加 `deleted` 字段 + `(source_version_id, deleted)` 唯一约束，或采用物理删除 + `(source_version_id)` 唯一约束方案
+- 业务约束：同一来源 skill 同时最多有一条 `PENDING` 提升申请；同一来源同时最多有一条有效 `INITIAL` 提升关系。全局目标有任何同号版本时，不允许 UPDATE 审批覆盖；异号审批按实际发布时间更新 latest。
+- PostgreSQL 以 `source_skill_id WHERE status='PENDING'` 和 `source_skill_id WHERE request_kind='INITIAL' AND status='APPROVED' AND target_skill_id IS NOT NULL` 两个部分唯一索引防止并发重复。
+
+### promotion_revocation_request
+
+- 来源技能所有者或团队管理员可提交撤销，平台管理员审核；平台管理员直接撤销也留存申请和审计。
+- 审核通过时删除全局派生 skill 及其版本、统计和公开入口，不把数据迁回团队 skill；团队原件和共用的文件对象保留。
+- 记录保留原始来源/目标 ID 与坐标、提交人、审核人、理由、状态及时间。目标全局 skill 物理删除后，这些字段仍供管理员审计。
+- 撤销释放旧全局坐标；重新提升须重新申请、审核，并再次检查同名冲突。此前已下载的客户端文件无法收回。
 
 ### skill_star
 
@@ -371,7 +368,7 @@
 
 ### skill_search_document
 
-一个 skill 对应一条搜索文档，内容取“最新已发布版本”。实现上可由 `latest_version_id` 作为缓存指针承载，但其语义只能是 latest published pointer。
+一个 skill 对应一条搜索文档，内容取 `publishedVersion` 表示的“最新已发布版本”。内部 `latest_version_id` 可能在 PRIVATE 上传时指向未发布版本，不能不校验状态就用于公开搜索。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|

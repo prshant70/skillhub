@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { renderToStaticMarkup } from 'react-dom/server'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MouseEvent, ReactNode } from 'react'
 import type { SkillFile } from '@/api/types'
@@ -19,6 +19,13 @@ const useSkillVersionsMock = vi.fn()
 const useSkillFilesMock = vi.fn()
 const useSkillReadmeMock = vi.fn()
 const useSkillFileMock = vi.fn()
+const usePromotionSourceStateMock = vi.fn()
+const submitPromotionMock = vi.fn()
+const submitRevocationMock = vi.fn()
+const directRevocationMock = vi.fn()
+const deleteSkillMock = vi.fn()
+const useRevocationHistoryMock = vi.fn()
+const routeParams = { namespace: 'global', slug: 'demo-skill' }
 const searchMock = vi.hoisted(() => ({ value: { returnTo: '/dashboard/skills', version: undefined as string | undefined } }))
 let authState: {
   user: { userId: string; platformRoles: string[] } | null
@@ -30,7 +37,7 @@ let authState: {
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
-  useParams: () => ({ namespace: 'global', slug: 'demo-skill' }),
+  useParams: () => routeParams,
   useRouterState: () => ({ pathname: '/space/global/demo-skill', searchStr: '', hash: '' }),
   useSearch: () => searchMock.value,
   Link: ({
@@ -206,7 +213,7 @@ vi.mock('@/shared/hooks/use-skill-queries', () => ({
   useSkillReadme: (...args: unknown[]) => useSkillReadmeMock(...args),
   useSkillFile: (...args: unknown[]) => useSkillFileMock(...args),
   useArchiveSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useDeleteSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteSkill: () => ({ mutateAsync: deleteSkillMock, isPending: false }),
   useDeleteSkillVersion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRereleaseSkillVersion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUnarchiveSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -227,7 +234,14 @@ vi.mock('@/shared/hooks/use-label-queries', () => ({
 }))
 
 vi.mock('@/shared/hooks/use-user-queries', () => ({
-  useSubmitPromotion: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useSubmitPromotion: () => ({ mutateAsync: submitPromotionMock, isPending: false }),
+  usePromotionSourceState: (...args: unknown[]) => usePromotionSourceStateMock(...args),
+}))
+
+vi.mock('@/features/promotion/use-promotion-revocations', () => ({
+  usePromotionRevocationHistory: (...args: unknown[]) => useRevocationHistoryMock(...args),
+  useSubmitPromotionRevocation: () => ({ mutateAsync: submitRevocationMock, isPending: false }),
+  useDirectPromotionRevocation: () => ({ mutateAsync: directRevocationMock, isPending: false }),
 }))
 
 import { SkillDetailPage } from './skill-detail'
@@ -274,8 +288,16 @@ describe('SkillDetailPage', () => {
   afterEach(() => cleanup())
 
   beforeEach(() => {
+    routeParams.namespace = 'global'
+    routeParams.slug = 'demo-skill'
+    submitPromotionMock.mockReset()
+    submitRevocationMock.mockReset()
+    directRevocationMock.mockReset()
+    useRevocationHistoryMock.mockReturnValue({ data: [], isLoading: false, error: null })
+    usePromotionSourceStateMock.mockReturnValue({ data: undefined, isLoading: false, error: null })
     searchMock.value = { returnTo: '/dashboard/skills', version: undefined }
     navigateMock.mockReset()
+    deleteSkillMock.mockReset()
     useSkillFilesMock.mockReset()
     useSkillReadmeMock.mockReset()
     useSkillFileMock.mockReset()
@@ -312,6 +334,192 @@ describe('SkillDetailPage', () => {
     useSkillFilesMock.mockReturnValue({ data: [] })
     useSkillReadmeMock.mockReturnValue({ data: '# Demo', error: null })
     useSkillFileMock.mockReturnValue({ data: null, isLoading: false, error: null })
+  })
+
+  it('shows the removed owner read-only reason and keeps controlled draft download without write controls', () => {
+    useSkillDetailMock.mockReturnValue({ data: createSkill({
+      ownerReadOnly: true, canManageLifecycle: false, canSubmitPromotion: false,
+      resolutionMode: 'OWNER_PREVIEW', headlineVersion: { id: 11, version: '1.1.0', status: 'PENDING_REVIEW' },
+      ownerPreviewVersion: { id: 11, version: '1.1.0', status: 'PENDING_REVIEW' },
+    }), isLoading: false, isFetching: false, error: null })
+    useSkillVersionsMock.mockReturnValue({ data: [{ id: 11, version: '1.1.0', status: 'PENDING_REVIEW', downloadAvailable: true }] })
+    render(<SkillDetailPage />)
+    expect(screen.getByText('mySkills.ownerReadOnly')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'skillDetail.download' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.queryByRole('button', { name: 'skillDetail.deleteSkill' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'skillDetail.rereleaseVersion' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'skillDetail.withdrawReview' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByText('skillDetail.lifecycle')).toBeNull()
+  })
+
+  it('consumes protected deletion failures at the actual button boundary and allows retry', async () => {
+    deleteSkillMock.mockRejectedValue(new Error('revoke global publication first'))
+    render(<SkillDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'skillDetail.deleteSkill' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'skillDetail.deleteSkillConfirmTitle' }))
+      .getByRole('button', { name: 'skillDetail.deleteSkillContinue' }))
+    const dialog = await screen.findByRole('dialog', { name: 'skillDetail.deleteSkillInputTitle' })
+    fireEvent.change(within(dialog).getByPlaceholderText('skillDetail.deleteSkillInputPlaceholder'), { target: { value: 'demo-skill' } })
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'skillDetail.deleteSkillFinal' }))
+      await waitFor(() => expect(deleteSkillMock).toHaveBeenCalledTimes(attempt))
+      expect(within(dialog).getByDisplayValue('demo-skill')).toBeTruthy()
+    }
+    expect(deleteSkillMock).toHaveBeenLastCalledWith({ namespace: 'global', slug: 'demo-skill', ownerId: 'owner-1' })
+    expect(toastMocks.success).not.toHaveBeenCalled()
+    expect(toastMocks.error).not.toHaveBeenCalled() // The real MutationCache owns feedback, tested separately.
+    expect(navigateMock).not.toHaveBeenCalled()
+    // An uncaught async onClick rejection also makes Vitest fail this real-page run.
+  })
+
+  it('shows the avatar once beside the title, without an owner management section', () => {
+    useSkillDetailMock.mockReturnValue({ data: createSkill({ avatarUrl: '/approved-avatar.png' }), isLoading: false, isFetching: false, error: null })
+    const view = render(<SkillDetailPage />)
+    expect(view.container.querySelectorAll('img[src="/approved-avatar.png"]')).toHaveLength(1)
+    expect(screen.queryByText('skillAvatar.detailHelp')).toBeNull()
+    expect(screen.queryByText('skillAvatar.title')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'skillAvatar.manage' })).toBeNull()
+  })
+
+  it('offers a published team version for review against the current global version', async () => {
+    routeParams.namespace = 'team-ai'
+    useSkillDetailMock.mockReturnValue({
+      data: createSkill({ namespace: 'team-ai', canSubmitPromotion: true }),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    })
+    usePromotionSourceStateMock.mockReturnValue({
+      data: { requestKind: 'UPDATE', targetSkillId: 42, targetCurrentVersion: '1.3.0', pendingPromotionId: null },
+      isLoading: false,
+      error: null,
+    })
+    submitPromotionMock.mockResolvedValue(undefined)
+
+    render(<SkillDetailPage />)
+
+    expect(usePromotionSourceStateMock).toHaveBeenCalledWith(1, true)
+    expect(screen.getByText('skillDetail.promotionGlobalCurrent')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'skillDetail.submitGlobalUpdate' }))
+    const dialog = screen.getByRole('dialog', { name: 'skillDetail.globalUpdateConfirmTitle' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'skillDetail.submitGlobalUpdate' }))
+    await waitFor(() => expect(submitPromotionMock).toHaveBeenCalledWith({ sourceSkillId: 1, sourceVersionId: 10 }))
+  })
+
+  it('shows a pending request without another submission action', () => {
+    routeParams.namespace = 'team-ai'
+    useSkillDetailMock.mockReturnValue({
+      data: createSkill({ namespace: 'team-ai', canSubmitPromotion: false }),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    })
+    usePromotionSourceStateMock.mockReturnValue({
+      data: { requestKind: 'PENDING', targetSkillId: 42, targetCurrentVersion: '1.3.0', pendingPromotionId: 7 },
+      isLoading: false,
+      error: null,
+    })
+
+    render(<SkillDetailPage />)
+
+    expect(screen.getByText('skillDetail.promotionPending')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'skillDetail.submitGlobalUpdate' })).toBeNull()
+  })
+
+  it('submits a revocation request for the linked global skill', async () => {
+    routeParams.namespace = 'team-ai'
+    useSkillDetailMock.mockReturnValue({
+      data: createSkill({ namespace: 'team-ai', canSubmitPromotion: true }),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    })
+    usePromotionSourceStateMock.mockReturnValue({
+      data: { requestKind: 'UPDATE', targetSkillId: 42, targetCurrentVersion: '1.3.0', pendingPromotionId: null },
+      isLoading: false,
+      error: null,
+    })
+    submitRevocationMock.mockResolvedValue(undefined)
+
+    render(<SkillDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'skillDetail.requestRevocation' }))
+    const dialog = screen.getByRole('dialog', { name: 'skillDetail.revocationConfirmTitle' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'skillDetail.revocationReasonLabel' }), { target: { value: 'No longer safe' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'skillDetail.requestRevocation' }))
+    await waitFor(() => expect(submitRevocationMock).toHaveBeenCalledWith({ sourceSkillId: 1, reason: 'No longer safe' }))
+  })
+
+  it('blocks duplicate revocation and global update actions while revocation is pending', () => {
+    routeParams.namespace = 'team-ai'
+    useSkillDetailMock.mockReturnValue({
+      data: createSkill({ namespace: 'team-ai', canSubmitPromotion: true }),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    })
+    usePromotionSourceStateMock.mockReturnValue({
+      data: { requestKind: 'UPDATE', targetSkillId: 42, targetCurrentVersion: '1.3.0', pendingPromotionId: null },
+      isLoading: false,
+      error: null,
+    })
+    useRevocationHistoryMock.mockReturnValue({
+      data: [{ id: 7, status: 'PENDING', submittedAt: '2026-06-18T12:00:00Z' }],
+      isLoading: false,
+      error: null,
+    })
+
+    render(<SkillDetailPage />)
+
+    expect(screen.getByText('skillDetail.revocationPending')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'skillDetail.requestRevocation' })).toBeNull()
+    expect((screen.getByRole('button', { name: 'skillDetail.submitGlobalUpdate' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('keeps revocation available when the source has no published versions left', () => {
+    routeParams.namespace = 'team-ai'
+    useSkillDetailMock.mockReturnValue({
+      data: createSkill({ namespace: 'team-ai', canSubmitPromotion: false, publishedVersion: undefined, headlineVersion: undefined }),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    })
+    useSkillVersionsMock.mockReturnValue({ data: [] })
+    usePromotionSourceStateMock.mockReturnValue({
+      data: { requestKind: 'UPDATE', targetSkillId: 42, targetCurrentVersion: '1.3.0', pendingPromotionId: null },
+      isLoading: false,
+      error: null,
+    })
+
+    render(<SkillDetailPage />)
+
+    expect(screen.getByRole('button', { name: 'skillDetail.requestRevocation' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'skillDetail.submitGlobalUpdate' })).toBeNull()
+  })
+
+  it('offers direct revocation to a platform administrator outside the source team', async () => {
+    routeParams.namespace = 'team-ai'
+    hasRoleMock.mockImplementation((role: string) => role === 'SKILL_ADMIN')
+    useSkillDetailMock.mockReturnValue({
+      data: createSkill({ namespace: 'team-ai', canManageLifecycle: false, canSubmitPromotion: false }),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    })
+    usePromotionSourceStateMock.mockReturnValue({
+      data: { requestKind: 'UPDATE', targetSkillId: 42, targetCurrentVersion: '1.3.0', pendingPromotionId: null },
+      isLoading: false,
+      error: null,
+    })
+    directRevocationMock.mockResolvedValue(undefined)
+
+    render(<SkillDetailPage />)
+
+    expect(usePromotionSourceStateMock).toHaveBeenCalledWith(1, true)
+    fireEvent.click(screen.getByRole('button', { name: 'skillDetail.directRevocation' }))
+    const dialog = screen.getByRole('dialog', { name: 'skillDetail.revocationConfirmTitle' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'skillDetail.directRevocation' }))
+    await waitFor(() => expect(directRevocationMock).toHaveBeenCalledWith({ sourceSkillId: 1, reason: '' }))
   })
 
   it('loads the exact version requested by a Suite member link', () => {

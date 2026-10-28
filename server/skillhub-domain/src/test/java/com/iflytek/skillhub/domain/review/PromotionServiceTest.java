@@ -1,8 +1,10 @@
 package com.iflytek.skillhub.domain.review;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iflytek.skillhub.domain.event.SkillPublishedEvent;
 import com.iflytek.skillhub.domain.governance.GovernanceNotificationService;
 import com.iflytek.skillhub.domain.namespace.Namespace;
+import com.iflytek.skillhub.domain.namespace.NamespaceMemberRepository;
 import com.iflytek.skillhub.domain.namespace.NamespaceRepository;
 import com.iflytek.skillhub.domain.namespace.NamespaceStatus;
 import com.iflytek.skillhub.domain.namespace.NamespaceType;
@@ -15,6 +17,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,6 +45,7 @@ class PromotionServiceTest {
     @Mock private SkillVersionRepository skillVersionRepository;
     @Mock private SkillFileRepository skillFileRepository;
     @Mock private NamespaceRepository namespaceRepository;
+    @Mock private NamespaceMemberRepository namespaceMemberRepository;
     @Mock private ReviewPermissionChecker permissionChecker;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private GovernanceNotificationService governanceNotificationService;
@@ -59,9 +64,10 @@ class PromotionServiceTest {
 
     @BeforeEach
     void setUp() {
-        promotionService = new PromotionService(
-                promotionRequestRepository, skillRepository, skillVersionRepository,
-                skillFileRepository, namespaceRepository, permissionChecker, eventPublisher, governanceNotificationService, entityManager, CLOCK);
+        promotionService = new PromotionService(org.mockito.Mockito.mock(com.iflytek.skillhub.domain.skill.SkillOwnerAccessPolicy.class), promotionRequestRepository, skillRepository, skillVersionRepository,
+                skillFileRepository, namespaceRepository, namespaceMemberRepository, permissionChecker,
+                eventPublisher, governanceNotificationService, entityManager, CLOCK, new ObjectMapper());
+        lenient().when(namespaceRepository.findById(5L)).thenReturn(Optional.of(createSourceNamespace()));
     }
 
     private static void setField(Object target, String fieldName, Object value) {
@@ -96,6 +102,13 @@ class PromotionServiceTest {
         return sv;
     }
 
+    private String selectedVersionMetadata(boolean hasDisplayName) {
+        return """
+                {"name":"old-package-name","description":"Old version summary",
+                 "frontmatter":{"metadata":{"display-name":"包内标题"}},"displayNameOverride":"%s"}
+                """.formatted(hasDisplayName ? " 旧版标题 " : " ");
+    }
+
     private Namespace createGlobalNamespace() {
         Namespace ns = new Namespace("global", "Global", "user-1");
         setField(ns, "id", TARGET_NAMESPACE_ID);
@@ -120,6 +133,11 @@ class PromotionServiceTest {
         PromotionRequest pr = new PromotionRequest(SOURCE_SKILL_ID, SOURCE_VERSION_ID, TARGET_NAMESPACE_ID, USER_ID);
         setField(pr, "id", PROMOTION_ID);
         return pr;
+    }
+
+    private void allowCurrentSubmitter() {
+        lenient().when(permissionChecker.canSubmitPromotion(any(Skill.class), eq(USER_ID), anyMap(), anySet()))
+                .thenReturn(true);
     }
 
     private PromotionRequest approvedPromotion(PromotionRequest original, String comment) {
@@ -154,8 +172,6 @@ class PromotionServiceTest {
             when(permissionChecker.canSubmitPromotion(sourceSkill, USER_ID, Map.of())).thenReturn(true);
             when(namespaceRepository.findById(TARGET_NAMESPACE_ID)).thenReturn(Optional.of(globalNs));
             when(promotionRequestRepository.findBySourceSkillIdAndStatus(SOURCE_SKILL_ID, ReviewTaskStatus.PENDING))
-                    .thenReturn(Optional.empty());
-            when(promotionRequestRepository.findBySourceSkillIdAndStatus(SOURCE_SKILL_ID, ReviewTaskStatus.APPROVED))
                     .thenReturn(Optional.empty());
             when(promotionRequestRepository.save(any(PromotionRequest.class)))
                     .thenAnswer(inv -> {
@@ -209,13 +225,17 @@ class PromotionServiceTest {
         void shouldThrowWhenVersionNotPublished() {
             Skill sourceSkill = createSourceSkill();
             SkillVersion sv = createPublishedVersion();
-            sv.setStatus(SkillVersionStatus.DRAFT);
 
             when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(sourceSkill));
             when(skillVersionRepository.findById(SOURCE_VERSION_ID)).thenReturn(Optional.of(sv));
 
-            assertThrows(DomainBadRequestException.class,
-                    () -> promotionService.submitPromotion(SOURCE_SKILL_ID, SOURCE_VERSION_ID, TARGET_NAMESPACE_ID, USER_ID, Map.of()));
+            for (SkillVersionStatus status : List.of(SkillVersionStatus.DRAFT,
+                    SkillVersionStatus.PENDING_REVIEW, SkillVersionStatus.REJECTED, SkillVersionStatus.YANKED)) {
+                sv.setStatus(status);
+                assertThrows(DomainBadRequestException.class,
+                        () -> promotionService.submitPromotion(SOURCE_SKILL_ID, SOURCE_VERSION_ID,
+                                TARGET_NAMESPACE_ID, USER_ID, Map.of()));
+            }
         }
 
         @Test
@@ -272,8 +292,15 @@ class PromotionServiceTest {
             when(namespaceRepository.findById(TARGET_NAMESPACE_ID)).thenReturn(Optional.of(createGlobalNamespace()));
             when(promotionRequestRepository.findBySourceSkillIdAndStatus(SOURCE_SKILL_ID, ReviewTaskStatus.PENDING))
                     .thenReturn(Optional.empty());
-            when(promotionRequestRepository.findBySourceSkillIdAndStatus(SOURCE_SKILL_ID, ReviewTaskStatus.APPROVED))
+            approvedPromotion.setTargetSkillId(NEW_SKILL_ID);
+            when(promotionRequestRepository.findActiveInitialBySourceSkillId(SOURCE_SKILL_ID))
                     .thenReturn(Optional.of(approvedPromotion));
+            Skill target = new Skill(TARGET_NAMESPACE_ID, sourceSkill.getSlug(), USER_ID, SkillVisibility.PUBLIC);
+            setField(target, "id", NEW_SKILL_ID);
+            target.setSourceSkillId(SOURCE_SKILL_ID);
+            when(skillRepository.findById(NEW_SKILL_ID)).thenReturn(Optional.of(target));
+            when(skillVersionRepository.findBySkillIdAndVersion(NEW_SKILL_ID, "1.0.0"))
+                    .thenReturn(Optional.of(createPublishedVersion()));
 
             assertThrows(DomainBadRequestException.class,
                     () -> promotionService.submitPromotion(SOURCE_SKILL_ID, SOURCE_VERSION_ID, TARGET_NAMESPACE_ID, USER_ID, Map.of()));
@@ -321,8 +348,6 @@ class PromotionServiceTest {
             when(namespaceRepository.findById(TARGET_NAMESPACE_ID)).thenReturn(Optional.of(globalNs));
             when(promotionRequestRepository.findBySourceSkillIdAndStatus(SOURCE_SKILL_ID, ReviewTaskStatus.PENDING))
                     .thenReturn(Optional.empty());
-            when(promotionRequestRepository.findBySourceSkillIdAndStatus(SOURCE_SKILL_ID, ReviewTaskStatus.APPROVED))
-                    .thenReturn(Optional.empty());
             when(promotionRequestRepository.save(any(PromotionRequest.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
@@ -357,6 +382,11 @@ class PromotionServiceTest {
     @Nested
     class ReviewPromotion {
 
+        @BeforeEach
+        void allowSubmitter() {
+            allowCurrentSubmitter();
+        }
+
         @Test
         void shouldNotifySubmitterWhenPromotionApproved() {
             PromotionRequest request = createPendingPromotion();
@@ -381,7 +411,7 @@ class PromotionServiceTest {
             when(skillFileRepository.findByVersionId(SOURCE_VERSION_ID)).thenReturn(List.of());
             when(promotionRequestRepository.save(approvedRequest)).thenReturn(approvedRequest);
 
-            promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"));
+            promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"), Set.of());
 
             verify(governanceNotificationService).notifyUser(eq(USER_ID), eq("PROMOTION"), eq("PROMOTION_REQUEST"), eq(PROMOTION_ID), eq("Promotion approved"), any());
         }
@@ -427,7 +457,7 @@ class PromotionServiceTest {
             when(skillFileRepository.findByVersionId(SOURCE_VERSION_ID)).thenReturn(List.of());
             when(promotionRequestRepository.save(approvedRequest)).thenReturn(approvedRequest);
 
-            promotionService.approvePromotion(PROMOTION_ID, USER_ID, "self approve", Set.of("SUPER_ADMIN"));
+            promotionService.approvePromotion(PROMOTION_ID, USER_ID, "self approve", Set.of("SUPER_ADMIN"), Set.of());
 
             verify(governanceNotificationService).notifyUser(eq(USER_ID), eq("PROMOTION"), eq("PROMOTION_REQUEST"), eq(PROMOTION_ID), eq("Promotion approved"), any());
         }
@@ -450,6 +480,39 @@ class PromotionServiceTest {
 
     @Nested
     class ApprovePromotion {
+
+        @BeforeEach
+        void allowSubmitter() {
+            allowCurrentSubmitter();
+        }
+
+        private void assertRevokedSubmitterCannotBeApproved(PromotionRequestKind kind) {
+            PromotionRequest pending = createPendingPromotion();
+            pending.setRequestKind(kind);
+            Skill source = new Skill(5L, "my-skill", "other-owner", SkillVisibility.NAMESPACE_ONLY);
+            setField(source, "id", SOURCE_SKILL_ID);
+            when(promotionRequestRepository.findById(PROMOTION_ID)).thenReturn(Optional.of(pending));
+            when(permissionChecker.canReviewPromotion(pending, REVIEWER_ID, Set.of("SKILL_ADMIN")))
+                    .thenReturn(true);
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(source));
+            when(permissionChecker.canSubmitPromotion(eq(source), eq(USER_ID), eq(Map.of()), eq(Set.of())))
+                    .thenReturn(false);
+
+            assertThrows(DomainForbiddenException.class, () -> promotionService.approvePromotion(
+                    PROMOTION_ID, REVIEWER_ID, "approved", Set.of("SKILL_ADMIN"), Set.of()));
+            verify(promotionRequestRepository, never()).updateStatusWithVersion(
+                    anyLong(), any(), anyString(), any(), any(), any());
+        }
+
+        @Test
+        void rejectsInitialApprovalAfterTeamAdminWasRemoved() {
+            assertRevokedSubmitterCannotBeApproved(PromotionRequestKind.INITIAL);
+        }
+
+        @Test
+        void rejectsUpdateApprovalAfterTeamAdminWasRemoved() {
+            assertRevokedSubmitterCannotBeApproved(PromotionRequestKind.UPDATE);
+        }
 
         @Test
         void shouldApprovePromotionSuccessfully() {
@@ -482,7 +545,7 @@ class PromotionServiceTest {
             when(promotionRequestRepository.save(approvedRequest)).thenReturn(approvedRequest);
 
             PromotionRequest result = promotionService.approvePromotion(
-                    PROMOTION_ID, REVIEWER_ID, "LGTM", Set.of("SKILL_ADMIN"));
+                    PROMOTION_ID, REVIEWER_ID, "LGTM", Set.of("SKILL_ADMIN"), Set.of());
 
             assertNotNull(result);
             assertEquals(ReviewTaskStatus.APPROVED, result.getStatus());
@@ -541,7 +604,7 @@ class PromotionServiceTest {
             when(promotionRequestRepository.findById(PROMOTION_ID)).thenReturn(Optional.empty());
 
             assertThrows(DomainNotFoundException.class,
-                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN")));
+                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"), Set.of()));
         }
 
         @Test
@@ -551,7 +614,7 @@ class PromotionServiceTest {
             when(promotionRequestRepository.findById(PROMOTION_ID)).thenReturn(Optional.of(pr));
 
             assertThrows(DomainBadRequestException.class,
-                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN")));
+                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"), Set.of()));
         }
 
         @Test
@@ -561,7 +624,7 @@ class PromotionServiceTest {
             when(permissionChecker.canReviewPromotion(pr, REVIEWER_ID, Set.of())).thenReturn(false);
 
             assertThrows(DomainForbiddenException.class,
-                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of()));
+                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of(), Set.of()));
         }
 
         @Test
@@ -569,11 +632,12 @@ class PromotionServiceTest {
             PromotionRequest pr = createPendingPromotion();
             when(promotionRequestRepository.findById(PROMOTION_ID)).thenReturn(Optional.of(pr));
             when(permissionChecker.canReviewPromotion(pr, REVIEWER_ID, Set.of("SKILL_ADMIN"))).thenReturn(true);
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(createSourceSkill()));
             when(promotionRequestRepository.updateStatusWithVersion(
                     any(), any(), any(), any(), any(), any())).thenReturn(0);
 
             assertThrows(ConcurrentModificationException.class,
-                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN")));
+                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"), Set.of()));
         }
 
         @Test
@@ -595,17 +659,20 @@ class PromotionServiceTest {
                     .thenThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
 
             DomainBadRequestException ex = assertThrows(DomainBadRequestException.class,
-                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN")));
+                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"), Set.of()));
 
             assertEquals("promotion.target_skill_conflict", ex.messageCode());
         }
 
-        @Test
-        void shouldCopyDisplayNameAndSummaryToNewSkill() {
+        @ParameterizedTest
+        @ValueSource(booleans = {true, false})
+        void shouldCopySelectedVersionMetadataToNewSkill(boolean hasDisplayName) {
             PromotionRequest pr = createPendingPromotion();
             PromotionRequest approvedRequest = approvedPromotion(pr, "ok");
             Skill sourceSkill = createSourceSkill();
             SkillVersion sourceVersion = createPublishedVersion();
+            sourceSkill.setLatestVersionId(999L);
+            sourceVersion.setParsedMetadataJson(selectedVersionMetadata(hasDisplayName));
 
             when(promotionRequestRepository.findById(PROMOTION_ID))
                     .thenReturn(Optional.of(pr), Optional.of(approvedRequest));
@@ -626,15 +693,225 @@ class PromotionServiceTest {
             when(skillFileRepository.findByVersionId(SOURCE_VERSION_ID)).thenReturn(List.of());
             when(skillFileRepository.saveAll(anyList())).thenReturn(List.of());
 
-            promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"));
+            promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "ok", Set.of("SKILL_ADMIN"), Set.of());
 
             ArgumentCaptor<Skill> skillCaptor = ArgumentCaptor.forClass(Skill.class);
             verify(skillRepository, times(2)).save(skillCaptor.capture());
             Skill newSkill = skillCaptor.getAllValues().get(0);
-            assertEquals("My Skill", newSkill.getDisplayName());
-            assertEquals("A test skill", newSkill.getSummary());
+            assertEquals(hasDisplayName ? "旧版标题" : "包内标题", newSkill.getDisplayName());
+            assertEquals("Old version summary", newSkill.getSummary());
+            assertEquals(NEW_VERSION_ID, newSkill.getLatestVersionId());
         }
 
+    }
+
+    @Nested
+    class UpdatePromotion {
+
+        @BeforeEach
+        void allowSubmitter() {
+            allowCurrentSubmitter();
+        }
+        private Skill linkedTarget() {
+            Skill target = new Skill(TARGET_NAMESPACE_ID, "my-skill", USER_ID, SkillVisibility.PUBLIC);
+            setField(target, "id", NEW_SKILL_ID);
+            target.setSourceSkillId(SOURCE_SKILL_ID);
+            return target;
+        }
+
+        private PromotionRequest initialLink() {
+            PromotionRequest initial = approvedPromotion(createPendingPromotion(), "approved");
+            initial.setTargetSkillId(NEW_SKILL_ID);
+            return initial;
+        }
+
+        @Test
+        void submitsUpdateToExistingGlobalSkill() {
+            Skill source = createSourceSkill();
+            SkillVersion version = createPublishedVersion();
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(source));
+            when(skillVersionRepository.findById(SOURCE_VERSION_ID)).thenReturn(Optional.of(version));
+            when(permissionChecker.canSubmitPromotion(source, USER_ID, Map.of())).thenReturn(true);
+            when(namespaceRepository.findById(TARGET_NAMESPACE_ID))
+                    .thenReturn(Optional.of(createGlobalNamespace()));
+            when(promotionRequestRepository.findActiveInitialBySourceSkillId(SOURCE_SKILL_ID))
+                    .thenReturn(Optional.of(initialLink()));
+            when(skillRepository.findById(NEW_SKILL_ID)).thenReturn(Optional.of(linkedTarget()));
+            when(promotionRequestRepository.save(any(PromotionRequest.class)))
+                    .thenAnswer(inv -> inv.getArgument(0));
+
+            PromotionRequest result = promotionService.submitPromotion(
+                    SOURCE_SKILL_ID, SOURCE_VERSION_ID, TARGET_NAMESPACE_ID, USER_ID, Map.of());
+
+            assertEquals(PromotionRequestKind.UPDATE, result.getRequestKind());
+            assertEquals(NEW_SKILL_ID, result.getTargetSkillId());
+        }
+
+        @Test
+        void rejectsUpdateWhenGlobalAlreadyHasTheSourceVersionNumber() {
+            Skill source = createSourceSkill();
+            SkillVersion version = createPublishedVersion();
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(source));
+            when(skillVersionRepository.findById(SOURCE_VERSION_ID)).thenReturn(Optional.of(version));
+            when(permissionChecker.canSubmitPromotion(source, USER_ID, Map.of())).thenReturn(true);
+            when(namespaceRepository.findById(TARGET_NAMESPACE_ID))
+                    .thenReturn(Optional.of(createGlobalNamespace()));
+            when(promotionRequestRepository.findActiveInitialBySourceSkillId(SOURCE_SKILL_ID))
+                    .thenReturn(Optional.of(initialLink()));
+            when(skillRepository.findById(NEW_SKILL_ID)).thenReturn(Optional.of(linkedTarget()));
+            SkillVersion occupied = new SkillVersion(NEW_SKILL_ID, version.getVersion(), USER_ID);
+            when(skillVersionRepository.findBySkillIdAndVersion(NEW_SKILL_ID, version.getVersion()))
+                    .thenReturn(Optional.of(occupied));
+
+            for (SkillVersionStatus status : List.of(SkillVersionStatus.DRAFT,
+                    SkillVersionStatus.PENDING_REVIEW, SkillVersionStatus.PUBLISHED)) {
+                occupied.setStatus(status);
+                assertThrows(DomainBadRequestException.class, () -> promotionService.submitPromotion(
+                        SOURCE_SKILL_ID, SOURCE_VERSION_ID, TARGET_NAMESPACE_ID, USER_ID, Map.of()));
+            }
+            verify(promotionRequestRepository, never()).save(any(PromotionRequest.class));
+        }
+
+        @Test
+        void sourceStateKeepsLinkedTargetVisibleWhenArchivedAndHidden() {
+            Skill source = createSourceSkill();
+            Skill target = linkedTarget();
+            target.setStatus(SkillStatus.ARCHIVED);
+            target.setHidden(true);
+            target.setLatestVersionId(NEW_VERSION_ID);
+            SkillVersion latest = new SkillVersion(NEW_SKILL_ID, "2.0.0", USER_ID);
+            setField(latest, "id", NEW_VERSION_ID);
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(source));
+            when(permissionChecker.canSubmitPromotion(source, USER_ID, Map.of(), Set.of()))
+                    .thenReturn(true);
+            when(promotionRequestRepository.findActiveInitialBySourceSkillId(SOURCE_SKILL_ID))
+                    .thenReturn(Optional.of(initialLink()));
+            when(skillRepository.findById(NEW_SKILL_ID)).thenReturn(Optional.of(target));
+            when(skillVersionRepository.findById(NEW_VERSION_ID)).thenReturn(Optional.of(latest));
+
+            PromotionState state = promotionService.getSourceState(SOURCE_SKILL_ID, USER_ID,
+                    Map.of(), Set.of());
+
+            assertEquals("UPDATE", state.requestKind());
+            assertEquals(NEW_SKILL_ID, state.targetSkillId());
+            assertEquals("2.0.0", state.targetCurrentVersion());
+        }
+
+        @ParameterizedTest
+        @ValueSource(booleans = {true, false})
+        void approvesUpdateUsingSelectedVersionMetadata(boolean hasDisplayName) {
+            PromotionRequest pending = createPendingPromotion();
+            pending.setRequestKind(PromotionRequestKind.UPDATE);
+            pending.setTargetSkillId(NEW_SKILL_ID);
+            PromotionRequest approved = approvedPromotion(pending, "approved");
+            approved.setRequestKind(PromotionRequestKind.UPDATE);
+            approved.setTargetSkillId(NEW_SKILL_ID);
+            Skill target = linkedTarget();
+            target.setDisplayName("Independently updated global name");
+            target.setSummary("Independently updated global summary");
+            // The global skill may have advanced independently. Publication order, not
+            // numeric version order, determines the latest version after approval.
+            target.setLatestVersionId(999L);
+            SkillVersion created = new SkillVersion(NEW_SKILL_ID, "1.0.0", USER_ID);
+            setField(created, "id", NEW_VERSION_ID);
+            when(promotionRequestRepository.findById(PROMOTION_ID))
+                    .thenReturn(Optional.of(pending), Optional.of(approved));
+            when(permissionChecker.canReviewPromotion(pending, REVIEWER_ID, Set.of("SKILL_ADMIN")))
+                    .thenReturn(true);
+            when(promotionRequestRepository.updateStatusWithVersion(
+                    PROMOTION_ID, ReviewTaskStatus.APPROVED, REVIEWER_ID, "approved",
+                    NEW_SKILL_ID, pending.getVersion()))
+                    .thenReturn(1);
+            Skill source = createSourceSkill();
+            source.setLatestVersionId(998L);
+            SkillVersion sourceVersion = createPublishedVersion();
+            sourceVersion.setParsedMetadataJson(selectedVersionMetadata(hasDisplayName));
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(source));
+            when(skillVersionRepository.findById(SOURCE_VERSION_ID)).thenReturn(Optional.of(sourceVersion));
+            when(promotionRequestRepository.findActiveInitialBySourceSkillId(SOURCE_SKILL_ID))
+                    .thenReturn(Optional.of(initialLink()));
+            when(skillRepository.findById(NEW_SKILL_ID)).thenReturn(Optional.of(target));
+            when(skillVersionRepository.save(any(SkillVersion.class))).thenReturn(created);
+            when(skillFileRepository.findByVersionId(SOURCE_VERSION_ID)).thenReturn(List.of());
+            when(promotionRequestRepository.save(approved)).thenReturn(approved);
+
+            PromotionRequest result = promotionService.approvePromotion(
+                    PROMOTION_ID, REVIEWER_ID, "approved", Set.of("SKILL_ADMIN"), Set.of());
+
+            assertEquals(NEW_SKILL_ID, result.getTargetSkillId());
+            assertEquals(NEW_VERSION_ID, result.getTargetVersionId());
+            assertEquals(NEW_VERSION_ID, target.getLatestVersionId());
+            assertEquals(hasDisplayName ? "旧版标题" : "包内标题", target.getDisplayName());
+            assertEquals("Old version summary", target.getSummary());
+            verify(promotionRequestRepository).updateStatusWithVersion(
+                    PROMOTION_ID, ReviewTaskStatus.APPROVED, REVIEWER_ID, "approved",
+                    NEW_SKILL_ID, pending.getVersion());
+            verify(skillRepository, times(1)).save(target);
+            verify(entityManager).lock(target, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
+
+        @Test
+        void rejectsUpdateApprovalWhenGlobalVersionWasOccupiedAfterSubmission() {
+            PromotionRequest pending = createPendingPromotion();
+            pending.setRequestKind(PromotionRequestKind.UPDATE);
+            pending.setTargetSkillId(NEW_SKILL_ID);
+            PromotionRequest approved = approvedPromotion(pending, "approved");
+            approved.setRequestKind(PromotionRequestKind.UPDATE);
+            approved.setTargetSkillId(NEW_SKILL_ID);
+            Skill target = linkedTarget();
+            SkillVersion sourceVersion = createPublishedVersion();
+            when(promotionRequestRepository.findById(PROMOTION_ID))
+                    .thenReturn(Optional.of(pending), Optional.of(approved));
+            when(permissionChecker.canReviewPromotion(pending, REVIEWER_ID, Set.of("SKILL_ADMIN")))
+                    .thenReturn(true);
+            when(promotionRequestRepository.updateStatusWithVersion(
+                    PROMOTION_ID, ReviewTaskStatus.APPROVED, REVIEWER_ID, "approved",
+                    NEW_SKILL_ID, pending.getVersion())).thenReturn(1);
+            when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(createSourceSkill()));
+            when(skillVersionRepository.findById(SOURCE_VERSION_ID)).thenReturn(Optional.of(sourceVersion));
+            when(promotionRequestRepository.findActiveInitialBySourceSkillId(SOURCE_SKILL_ID))
+                    .thenReturn(Optional.of(initialLink()));
+            when(skillRepository.findById(NEW_SKILL_ID)).thenReturn(Optional.of(target));
+            when(skillVersionRepository.findBySkillIdAndVersion(NEW_SKILL_ID, sourceVersion.getVersion()))
+                    .thenReturn(Optional.of(new SkillVersion(NEW_SKILL_ID, sourceVersion.getVersion(), USER_ID)));
+
+            DomainBadRequestException error = assertThrows(DomainBadRequestException.class,
+                    () -> promotionService.approvePromotion(PROMOTION_ID, REVIEWER_ID, "approved",
+                            Set.of("SKILL_ADMIN"), Set.of()));
+            assertEquals("promotion.target_version_conflict", error.messageCode());
+            verify(entityManager).lock(target, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            verify(skillVersionRepository, never()).save(any(SkillVersion.class));
+        }
+    }
+
+    @Test
+    void initialApprovalRejectsArchivedPublishedSlugOwnedByAnotherUser() {
+        allowCurrentSubmitter();
+        PromotionRequest pending = createPendingPromotion();
+        PromotionRequest approved = approvedPromotion(pending, "approved");
+        Skill occupied = new Skill(TARGET_NAMESPACE_ID, "my-skill", "another-owner", SkillVisibility.PUBLIC);
+        setField(occupied, "id", 99L);
+        occupied.setStatus(SkillStatus.ARCHIVED);
+        occupied.setHidden(true);
+        when(promotionRequestRepository.findById(PROMOTION_ID))
+                .thenReturn(Optional.of(pending), Optional.of(approved));
+        when(permissionChecker.canReviewPromotion(pending, REVIEWER_ID, Set.of("SKILL_ADMIN")))
+                .thenReturn(true);
+        when(promotionRequestRepository.updateStatusWithVersion(
+                PROMOTION_ID, ReviewTaskStatus.APPROVED, REVIEWER_ID, "approved", null, pending.getVersion()))
+                .thenReturn(1);
+        when(skillRepository.findById(SOURCE_SKILL_ID)).thenReturn(Optional.of(createSourceSkill()));
+        when(skillVersionRepository.findById(SOURCE_VERSION_ID)).thenReturn(Optional.of(createPublishedVersion()));
+        when(skillRepository.findByNamespaceIdAndSlug(TARGET_NAMESPACE_ID, "my-skill"))
+                .thenReturn(List.of(occupied));
+        when(skillVersionRepository.findBySkillIdAndStatus(99L, SkillVersionStatus.PUBLISHED))
+                .thenReturn(List.of(new SkillVersion(99L, "1.0.0", "another-owner")));
+
+        DomainBadRequestException ex = assertThrows(DomainBadRequestException.class,
+                () -> promotionService.approvePromotion(
+                        PROMOTION_ID, REVIEWER_ID, "approved", Set.of("SKILL_ADMIN"), Set.of()));
+        assertEquals("promotion.target_skill_conflict", ex.messageCode());
+        verify(skillRepository, never()).save(any(Skill.class));
     }
 
     @Nested

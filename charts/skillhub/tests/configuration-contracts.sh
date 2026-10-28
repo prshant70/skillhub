@@ -23,7 +23,75 @@ assert_rejected() {
   fi
 }
 
+assert_web_upstream() {
+  local manifest=$1
+  local expected=$2
+  [[ $(grep -Fc 'name: SKILLHUB_API_UPSTREAM' "$manifest") -eq 1 ]] \
+    || fail "Web must render exactly one built-in API upstream"
+  grep -A1 -F 'name: SKILLHUB_API_UPSTREAM' "$manifest" \
+    | grep -Fq "value: \"$expected\"" \
+    || fail "Web runtime DNS upstream must be $expected"
+}
+
+# Nginx runtime DNS resolution does not expand the pod's search suffixes.
+render web-dns "$CHART_DIR" --namespace default \
+  --show-only templates/web-deployment.yaml >"$TMP_DIR/web-dns.yaml"
+assert_web_upstream "$TMP_DIR/web-dns.yaml" \
+  'http://web-dns-skillhub-server.default.svc.cluster.local:8080'
+
+render skillhub "$CHART_DIR" --namespace team-skills \
+  --show-only templates/web-deployment.yaml >"$TMP_DIR/web-dns-namespace.yaml"
+assert_web_upstream "$TMP_DIR/web-dns-namespace.yaml" \
+  'http://skillhub-server.team-skills.svc.cluster.local:8080'
+
+render web-dns "$CHART_DIR" --namespace team-skills \
+  --set nameOverride=registry \
+  --show-only templates/web-deployment.yaml >"$TMP_DIR/web-dns-name.yaml"
+assert_web_upstream "$TMP_DIR/web-dns-name.yaml" \
+  'http://web-dns-registry-server.team-skills.svc.cluster.local:8080'
+
+render web-dns "$CHART_DIR" --namespace team-skills \
+  --set fullnameOverride=custom-hub --set server.service.port=9080 \
+  --set web.clusterDomain=k8s.example.internal \
+  --show-only templates/web-deployment.yaml >"$TMP_DIR/web-dns-custom.yaml"
+assert_web_upstream "$TMP_DIR/web-dns-custom.yaml" \
+  'http://custom-hub-server.team-skills.svc.k8s.example.internal:9080'
+
+# --reuse-values can supply old chart defaults without this newly added key.
+# Model that effective values shape here; a real cross-version upgrade is a
+# separate integration check, not a second render of this chart's new defaults.
+LEGACY_VALUES_CHART="$TMP_DIR/legacy-values-chart"
+cp -R "$CHART_DIR" "$LEGACY_VALUES_CHART"
+sed '/^  clusterDomain:/d' "$CHART_DIR/values.yaml" >"$LEGACY_VALUES_CHART/values.yaml"
+render web-dns "$LEGACY_VALUES_CHART" --namespace team-skills \
+  --set fullnameOverride=custom-hub --set server.service.port=9080 \
+  --show-only templates/web-deployment.yaml >"$TMP_DIR/web-dns-legacy-values.yaml"
+assert_web_upstream "$TMP_DIR/web-dns-legacy-values.yaml" \
+  'http://custom-hub-server.team-skills.svc.cluster.local:9080'
+
+assert_rejected web-dns-empty-domain --set-string web.clusterDomain=
+assert_rejected web-dns-url-domain --set-string web.clusterDomain=https://cluster.local
+assert_rejected web-dns-empty-label --set-string web.clusterDomain=cluster..local
+assert_rejected web-dns-invalid-label --set-string web.clusterDomain=-cluster.local
+
 render verify "$CHART_DIR" >"$TMP_DIR/default.yaml"
+if grep -Fq 'name: verify-skillhub-github-sync' "$TMP_DIR/default.yaml"; then
+  fail "GitHub sync deployment must stay disabled by default"
+fi
+grep -A1 -F 'name: SKILLHUB_GITHUB_SYNC_STAGING_CAPACITY_LIMIT_BYTES' "$TMP_DIR/default.yaml" \
+  | grep -Fq 'value: "0"' \
+  || fail "server must receive the default GitHub sync staging capacity budget"
+render github-sync "$CHART_DIR" \
+  --set githubSync.enabled=true \
+  --set githubSync.stagingCapacityLimitBytes=1073741824 \
+  --set-string secrets.githubSyncServiceToken=github-sync-service-token-at-least-32-characters \
+  >"$TMP_DIR/github-sync.yaml"
+grep -Fq 'name: github-sync-skillhub-github-sync' "$TMP_DIR/github-sync.yaml" \
+  || fail "enabled GitHub sync must render its deployment"
+grep -A1 -F 'name: SKILLHUB_GITHUB_SYNC_STAGING_CAPACITY_LIMIT_BYTES' "$TMP_DIR/github-sync.yaml" \
+  | grep -Fq 'value: "1073741824"' \
+  || fail "server must receive the configured GitHub sync staging capacity budget"
+assert_rejected github-sync-negative-capacity --set githubSync.stagingCapacityLimitBytes=-1
 grep -Fq 'name: POSTGRESQL_MAX_CONNECTIONS' "$TMP_DIR/default.yaml"
 grep -Fq 'value: "verify-postgresql"' "$TMP_DIR/default.yaml"
 grep -Fq 'value: "verify-redis-master"' "$TMP_DIR/default.yaml"
@@ -399,5 +467,20 @@ assert_rejected subpath-reserved-nested --set-string web.basePath=/api/nested/
 assert_rejected public-base-url-query --set-string publicBaseUrl=https://skills.example.com/skillhub?ref=1
 assert_rejected public-base-url-fragment --set-string publicBaseUrl=https://skills.example.com#frag
 assert_rejected public-base-url-no-host --set-string publicBaseUrl=https://
+
+# Example values must reuse the external application Secret and existing S3 config keys.
+helm template storage-contract "$CHART_DIR" -f "$TEST_VALUES" \
+  -f "$CHART_DIR/../../deploy/storage/helm-values.example.yaml" \
+  >"$TMP_DIR/storage-example.yaml"
+grep -Fq 'skillhub-storage-provider: "s3"' "$TMP_DIR/storage-example.yaml" \
+  || fail "Storage example must select the existing S3 provider"
+grep -Fq 's3-force-path-style: "true"' "$TMP_DIR/storage-example.yaml" \
+  || fail "Storage example must use path style"
+grep -Fq 'name: skillhub-app-secrets' "$TMP_DIR/storage-example.yaml" \
+  || fail "Storage example must reference the external application Secret"
+grep -Fq 'key: skillhub-storage-s3-access-key' "$TMP_DIR/storage-example.yaml" \
+  || fail "Storage access key Secret mapping changed"
+grep -Fq 'key: skillhub-storage-s3-secret-key' "$TMP_DIR/storage-example.yaml" \
+  || fail "Storage secret key Secret mapping changed"
 
 echo "Helm configuration contract tests passed"

@@ -32,8 +32,77 @@ public record SkillSummaryResponse(
          * that do not opt in.
          */
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        List<SkillLabelDto> labels
+        List<SkillLabelDto> labels,
+        String avatarUrl,
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        ManagementState managementState,
+        boolean hasVisibleSuites
 ) {
+
+    public SkillSummaryResponse(
+            Long id, String slug, String displayName, String summary, String visibility, String status,
+            Long downloadCount, Integer starCount, BigDecimal ratingAvg, Integer ratingCount,
+            String namespace, Instant updatedAt, String ownerId, String ownerDisplayName,
+            boolean canSubmitPromotion, SkillLifecycleVersionResponse headlineVersion,
+            SkillLifecycleVersionResponse publishedVersion, SkillLifecycleVersionResponse ownerPreviewVersion,
+            String resolutionMode, ComplianceSnapshotResponse complianceSnapshot, List<SkillLabelDto> labels,
+            String avatarUrl, ManagementState managementState) {
+        this(id, slug, displayName, summary, visibility, status, downloadCount, starCount, ratingAvg,
+                ratingCount, namespace, updatedAt, ownerId, ownerDisplayName, canSubmitPromotion,
+                headlineVersion, publishedVersion, ownerPreviewVersion, resolutionMode, complianceSnapshot,
+                labels, avatarUrl, managementState, false);
+    }
+
+    public SkillSummaryResponse withVisibleSuites(boolean hasVisibleSuites) {
+        return new SkillSummaryResponse(id, slug, displayName, summary, visibility, status, downloadCount,
+                starCount, ratingAvg, ratingCount, namespace, updatedAt, ownerId, ownerDisplayName,
+                canSubmitPromotion, headlineVersion, publishedVersion, ownerPreviewVersion,
+                resolutionMode, complianceSnapshot, labels, avatarUrl, managementState, hasVisibleSuites);
+    }
+
+    /** Owner workspace projection, never populated by public discovery or social lists. */
+    public record ManagementState(String requestedVisibility, Long reviewTaskId,
+                                  String promotionRole, String relatedNamespace, String relatedSlug,
+                                  boolean ownerReadOnly) {
+        public ManagementState(String requestedVisibility, Long reviewTaskId, String promotionRole,
+                               String relatedNamespace, String relatedSlug) {
+            this(requestedVisibility, reviewTaskId, promotionRole, relatedNamespace, relatedSlug, false);
+        }
+    }
+
+    public SkillSummaryResponse(
+            Long id, String slug, String displayName, String summary, String visibility, String status,
+            Long downloadCount, Integer starCount, BigDecimal ratingAvg, Integer ratingCount,
+            String namespace, Instant updatedAt, String ownerId, String ownerDisplayName,
+            boolean canSubmitPromotion, SkillLifecycleVersionResponse headlineVersion,
+            SkillLifecycleVersionResponse publishedVersion, SkillLifecycleVersionResponse ownerPreviewVersion,
+            String resolutionMode, ComplianceSnapshotResponse complianceSnapshot, List<SkillLabelDto> labels,
+            String avatarUrl) {
+        this(id, slug, displayName, summary, visibility, status, downloadCount, starCount, ratingAvg,
+                ratingCount, namespace, updatedAt, ownerId, ownerDisplayName, canSubmitPromotion,
+                headlineVersion, publishedVersion, ownerPreviewVersion, resolutionMode, complianceSnapshot,
+                labels, avatarUrl, null);
+    }
+
+    public SkillSummaryResponse withManagementState(ManagementState state) {
+        return new SkillSummaryResponse(id, slug, displayName, summary, visibility, status, downloadCount,
+                starCount, ratingAvg, ratingCount, namespace, updatedAt, ownerId, ownerDisplayName,
+                canSubmitPromotion && (state == null || !state.ownerReadOnly()), headlineVersion, publishedVersion, ownerPreviewVersion,
+                resolutionMode, complianceSnapshot, labels, avatarUrl, state, hasVisibleSuites);
+    }
+
+    public SkillSummaryResponse(
+            Long id, String slug, String displayName, String summary, String visibility, String status,
+            Long downloadCount, Integer starCount, BigDecimal ratingAvg, Integer ratingCount,
+            String namespace, Instant updatedAt, String ownerId, String ownerDisplayName,
+            boolean canSubmitPromotion, SkillLifecycleVersionResponse headlineVersion,
+            SkillLifecycleVersionResponse publishedVersion, SkillLifecycleVersionResponse ownerPreviewVersion,
+            String resolutionMode, ComplianceSnapshotResponse complianceSnapshot, List<SkillLabelDto> labels) {
+        this(id, slug, displayName, summary, visibility, status, downloadCount, starCount, ratingAvg,
+                ratingCount, namespace, updatedAt, ownerId, ownerDisplayName, canSubmitPromotion,
+                headlineVersion, publishedVersion, ownerPreviewVersion, resolutionMode, complianceSnapshot,
+                labels, null);
+    }
 
     /**
      * Summary without label projection.
@@ -93,6 +162,6 @@ public record SkillSummaryResponse(
         return new SkillSummaryResponse(id, slug, displayName, summary, visibility, status, downloadCount,
                 starCount, ratingAvg, ratingCount, namespace, updatedAt, ownerId, ownerDisplayName,
                 canSubmitPromotion, headlineVersion,
-                publishedVersion, ownerPreviewVersion, resolutionMode, complianceSnapshot, labels);
+                publishedVersion, ownerPreviewVersion, resolutionMode, complianceSnapshot, labels, avatarUrl, managementState, hasVisibleSuites);
     }
 }
