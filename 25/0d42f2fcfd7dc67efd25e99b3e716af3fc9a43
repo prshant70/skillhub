@@ -1,0 +1,26 @@
+server/skillhub-app/src/main/resources/application.yml
+  s_e1d5f1a609ce96::t_c9966a78bf1985 64-73,211-214
+.env.release.example
+  s_e1d5f1a609ce96::t_f413084f98542a 127-147
+server/skillhub-auth/src/test/java/com/iflytek/skillhub/auth/policy/AccessPolicyTest.java
+  s_e1d5f1a609ce96::t_2ef8ca864ed818 46-63
+server/skillhub-auth/src/main/java/com/iflytek/skillhub/auth/policy/AccessPolicyFactory.java
+  s_e1d5f1a609ce96::t_00b43a3397ff66 7,9,25,32-42
+  s_e1d5f1a609ce96::t_33651076781651 43-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "250d42f2fcfd7dc67efd25e99b3e716af3fc9a43",
+  "prompts": {},
+  "sessions": {
+    "s_e1d5f1a609ce96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8203240-5383-4cfa-b960-a5a673e81d5e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
