@@ -1,0 +1,24 @@
+web/src/pages/login.tsx
+  s_e1d5f1a609ce96::t_eb3e155847e70b 104
+web/public/google-logo.svg
+  s_e1d5f1a609ce96::t_a89269c51af519 1-6
+web/src/features/auth/login-button.tsx
+  s_e1d5f1a609ce96::t_a89269c51af519 16
+  s_e1d5f1a609ce96::t_84ba669351c60d 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2be75212bfe0836cbf30aa9017602968f75af45",
+  "prompts": {},
+  "sessions": {
+    "s_e1d5f1a609ce96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8203240-5383-4cfa-b960-a5a673e81d5e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
