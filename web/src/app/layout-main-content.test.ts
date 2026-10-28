@@ -47,15 +47,6 @@ describe('getAppMainContentLayout', () => {
     }
   })
 
-  it('keeps the compact entry layout for password reset', () => {
-    for (const pathname of ['/reset-password']) {
-      expect(getAppMainContentLayout(pathname)).toEqual({
-        mainClassName: AUTH_MAIN_CLASS_NAME,
-        contentClassName: '',
-      })
-    }
-  })
-
   it('leaves other non-landing routes on the default full-width app content layout', () => {
     expect(getAppMainContentLayout('/space/acme/demo')).toEqual({
       mainClassName: DEFAULT_MAIN_CLASS_NAME,

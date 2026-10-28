@@ -368,7 +368,6 @@
     "hidePassword": "Скрыть пароль",
     "submitting": "Вход...",
     "submit": "Войти",
-    "forgotPassword": "Забыли пароль?",
     "noAccount": "Нет аккаунта?",
     "register": "Зарегистрироваться",
     "oauthHint": "После аутентификации OAuth вы будете автоматически перенаправлены обратно на этот сайт.",
@@ -411,31 +410,6 @@
     "passwordTooWeak": "Пароль должен содержать минимум 3 типа символов (заглавные, строчные, цифры, спецсимволы)",
     "emailInvalid": "Неверный формат email",
     "emailExists": "Email уже используется"
-  },
-  "resetPassword": {
-    "title": "Сброс пароля",
-    "subtitle": "Введите email, код подтверждения и новый пароль.",
-    "email": "Электронная почта",
-    "emailPlaceholder": "Введите email",
-    "emailRequired": "Введите email",
-    "emailInvalid": "Введите корректный адрес email",
-    "code": "Код подтверждения",
-    "codePlaceholder": "Введите 6-значный код",
-    "sendCode": "Отправить код",
-    "sendingCode": "Отправка...",
-    "codeSentMessage": "Если аккаунт подходит, код подтверждения отправлен.",
-    "codeRequired": "Введите код подтверждения",
-    "newPassword": "Новый пароль",
-    "newPasswordPlaceholder": "Введите новый пароль",
-    "newPasswordRequired": "Введите новый пароль",
-    "confirmPassword": "Подтвердите пароль",
-    "confirmPasswordPlaceholder": "Повторите новый пароль",
-    "passwordMismatch": "Пароли не совпадают",
-    "submit": "Сбросить пароль",
-    "submitting": "Сброс...",
-    "successMessage": "Пароль успешно сброшен. Войдите с новым паролем.",
-    "genericError": "Не удалось сбросить пароль",
-    "backToLogin": "Вернуться ко входу"
   },
   "device": {
     "title": "Авторизация устройства",
@@ -1301,7 +1275,6 @@
     "approveUser": "Одобрить",
     "disable": "Отключить",
     "enable": "Включить",
-    "resetPassword": "Сбросить пароль",
     "totalRecords": "Всего {{total}} записей, страница {{page}}",
     "prevPage": "Назад",
     "nextPage": "Вперёд",
@@ -1316,8 +1289,7 @@
     "roleSuperAdmin": "Суперадминистратор",
     "confirmAction": "Подтвердить действие",
     "confirmDisable": "Вы уверены, что хотите отключить пользователя {{username}}?",
-    "confirmEnable": "Вы уверены, что хотите включить пользователя {{username}}?",
-    "confirmResetPassword": "Отправить код подтверждения сброса пароля пользователю {{username}}?"
+    "confirmEnable": "Вы уверены, что хотите включить пользователя {{username}}?"
   },
   "adminLabels": {
     "title": "Управление метками",

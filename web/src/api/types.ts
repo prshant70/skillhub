@@ -113,16 +113,6 @@ export interface ChangePasswordRequest {
   newPassword: string
 }
 
-export interface PasswordResetRequest {
-  email: string
-}
-
-export interface PasswordResetConfirmRequest {
-  email: string
-  code: string
-  newPassword: string
-}
-
 export type CreateNamespaceRequest = Omit<components['schemas']['NamespaceRequest'], 'slug' | 'displayName'> & {
   slug: string
   displayName: string

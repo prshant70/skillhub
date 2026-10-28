@@ -405,7 +405,6 @@
     "hidePassword": "비밀번호 숨기기",
     "submitting": "로그인하는 중...",
     "submit": "로그인",
-    "forgotPassword": "비밀번호를 잊으셨나요?",
     "noAccount": "계정이 없으신가요?",
     "register": "회원가입",
     "oauthHint": "OAuth 인증 후 이 사이트로 자동으로 돌아옵니다.",
@@ -448,31 +447,6 @@
     "passwordTooWeak": "비밀번호에는 3가지 이상의 문자 유형(영문 대문자, 소문자, 숫자, 특수문자)이 포함되어야 합니다",
     "emailInvalid": "이메일 형식이 올바르지 않습니다",
     "emailExists": "이미 사용 중인 이메일입니다"
-  },
-  "resetPassword": {
-    "title": "비밀번호 재설정",
-    "subtitle": "이메일, 인증 코드, 새 비밀번호를 입력하세요.",
-    "email": "이메일",
-    "emailPlaceholder": "이메일 입력",
-    "emailRequired": "이메일을 입력하세요",
-    "emailInvalid": "올바른 이메일 주소를 입력하세요",
-    "code": "인증 코드",
-    "codePlaceholder": "6자리 인증 코드 입력",
-    "sendCode": "인증 코드 보내기",
-    "sendingCode": "보내는 중...",
-    "codeSentMessage": "대상 계정이 조건을 충족하는 경우 인증 코드를 보냈습니다.",
-    "codeRequired": "인증 코드를 입력하세요",
-    "newPassword": "새 비밀번호",
-    "newPasswordPlaceholder": "새 비밀번호 입력",
-    "newPasswordRequired": "새 비밀번호를 입력하세요",
-    "confirmPassword": "비밀번호 확인",
-    "confirmPasswordPlaceholder": "새 비밀번호 다시 입력",
-    "passwordMismatch": "두 비밀번호가 일치하지 않습니다",
-    "submit": "비밀번호 재설정",
-    "submitting": "재설정하는 중...",
-    "successMessage": "비밀번호가 재설정되었습니다. 새 비밀번호로 로그인하세요.",
-    "genericError": "비밀번호를 재설정하지 못했습니다",
-    "backToLogin": "로그인으로 돌아가기"
   },
   "device": {
     "title": "기기 인증",
@@ -1514,7 +1488,6 @@
     "approveUser": "승인",
     "disable": "비활성화",
     "enable": "활성화",
-    "resetPassword": "비밀번호 재설정",
     "totalRecords": "총 {{total}}개 기록, {{page}}페이지",
     "prevPage": "이전",
     "nextPage": "다음",
@@ -1529,8 +1502,7 @@
     "roleSuperAdmin": "최고 관리자",
     "confirmAction": "작업 확인",
     "confirmDisable": "사용자 {{username}}을 비활성화하시겠습니까?",
-    "confirmEnable": "사용자 {{username}}을 활성화하시겠습니까?",
-    "confirmResetPassword": "사용자 {{username}}에게 비밀번호 재설정 인증 코드를 보내시겠습니까?"
+    "confirmEnable": "사용자 {{username}}을 활성화하시겠습니까?"
   },
   "adminLabels": {
     "title": "라벨 관리",

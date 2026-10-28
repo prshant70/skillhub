@@ -35,7 +35,6 @@ import {
   useApproveUser,
   useDisableUser,
   useEnableUser,
-  useTriggerUserPasswordReset,
   useUpdateUserRole,
 } from '@/features/admin/use-admin-users'
 import type { AdminUser } from '@/features/admin/use-admin-users'
@@ -62,7 +61,7 @@ export function AdminUsersPage() {
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
   const [newRole, setNewRole] = useState('')
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
-  const [actionType, setActionType] = useState<'ban' | 'unban' | 'reset'>('ban')
+  const [actionType, setActionType] = useState<'ban' | 'unban'>('ban')
 
   const { data, isLoading } = useAdminUsers({
     search,
@@ -75,7 +74,6 @@ export function AdminUsersPage() {
   const approveUserMutation = useApproveUser()
   const disableUserMutation = useDisableUser()
   const enableUserMutation = useEnableUser()
-  const triggerPasswordResetMutation = useTriggerUserPasswordReset()
 
   const formatDate = (dateString: string) => {
     return formatLocalDateTime(dateString, i18n.language)
@@ -114,12 +112,6 @@ export function AdminUsersPage() {
     setConfirmDialogOpen(true)
   }
 
-  const handleTriggerPasswordReset = (user: AdminUser) => {
-    setSelectedUser(user)
-    setActionType('reset')
-    setConfirmDialogOpen(true)
-  }
-
   const confirmRoleChange = async () => {
     if (!selectedUser || !newRole || newRole === (selectedUser.platformRoles[0] || 'USER')) return
     try {
@@ -136,10 +128,8 @@ export function AdminUsersPage() {
     try {
       if (actionType === 'ban') {
         await disableUserMutation.mutateAsync(selectedUser.userId)
-      } else if (actionType === 'unban') {
-        await enableUserMutation.mutateAsync(selectedUser.userId)
       } else {
-        await triggerPasswordResetMutation.mutateAsync(selectedUser.userId)
+        await enableUserMutation.mutateAsync(selectedUser.userId)
       }
       setConfirmDialogOpen(false)
       setSelectedUser(null)
@@ -283,13 +273,6 @@ export function AdminUsersPage() {
                             {t('adminUsers.enable')}
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleTriggerPasswordReset(user)}
-                        >
-                          {t('adminUsers.resetPassword')}
-                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -375,9 +358,7 @@ export function AdminUsersPage() {
             <DialogDescription>
               {actionType === 'ban'
                 ? t('adminUsers.confirmDisable', { username: selectedUser?.username })
-                : actionType === 'unban'
-                  ? t('adminUsers.confirmEnable', { username: selectedUser?.username })
-                  : t('adminUsers.confirmResetPassword', { username: selectedUser?.username })}
+                : t('adminUsers.confirmEnable', { username: selectedUser?.username })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -386,7 +367,7 @@ export function AdminUsersPage() {
             </Button>
             <Button
               onClick={confirmUserAction}
-              disabled={disableUserMutation.isPending || enableUserMutation.isPending || triggerPasswordResetMutation.isPending}
+              disabled={disableUserMutation.isPending || enableUserMutation.isPending}
             >
               {t('dialog.confirm')}
             </Button>
