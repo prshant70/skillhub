@@ -101,7 +101,7 @@ export function LoginPage() {
         {effectiveTab === 'oauth' ? (
           <div className="space-y-4">
             {authMethodsLoading || hasExternalMethods ? (
-              <AuthMethodButtonList methods={authMethods} isLoading={authMethodsLoading} compact />
+              <AuthMethodButtonList methods={authMethods} isLoading={authMethodsLoading} />
             ) : null}
             {bootstrapConfig.enabled ? (
               <div className="space-y-2">
