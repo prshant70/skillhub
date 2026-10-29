@@ -1,0 +1,38 @@
+web/src/features/skill/install-command.test.ts
+  s_e1d5f1a609ce96::t_b0e255d045bf8b 61-62,68-69,75-76,82-83,94
+web/src/pages/landing.tsx
+  s_e1d5f1a609ce96::t_4297c92ba91124 483,486
+web/src/shared/components/landing-quick-start.tsx
+  s_e1d5f1a609ce96::t_4297c92ba91124 273
+  s_e1d5f1a609ce96::t_1a39304205e85c 27
+web/src/app/layout.tsx
+  s_e1d5f1a609ce96::t_4297c92ba91124 252,254,261-264,271
+web/public/robots.txt
+  s_e1d5f1a609ce96::t_1a39304205e85c 2
+web/src/shared/components/quick-start.tsx
+  s_e1d5f1a609ce96::t_1a39304205e85c 9
+web/src/i18n/locales/en.json
+  s_e1d5f1a609ce96::t_09bd238380292b 1677
+  s_e1d5f1a609ce96::t_802643f30275d6 32,257
+  s_e1d5f1a609ce96::t_884629fa58ac6f 81,123,142-144,154,202,227,247,250,295,300,346,357,380,1995,2001,2207,2221,2816,2915
+server/skillhub-app/src/main/java/com/iflytek/skillhub/config/OpenApiConfig.java
+  s_e1d5f1a609ce96::t_e15b9a11237e5c 21
+web/src/docs/skill.md.template
+  s_e1d5f1a609ce96::t_1a39304205e85c 3,10,19,42,55,60,123,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb1f87c71f949d6f2c1b83d44244740dff2db9c6",
+  "prompts": {},
+  "sessions": {
+    "s_e1d5f1a609ce96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8203240-5383-4cfa-b960-a5a673e81d5e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
