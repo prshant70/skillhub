@@ -1,13 +1,13 @@
 ---
 name: skillhub-cli
-description: Connect an Agent to a SkillHub registry and use the official SkillHub CLI to search, install, list, or explicitly upgrade SkillHub skills. Use when a user asks to connect SkillHub, install a SkillHub skill, or manage skills previously installed from SkillHub.
+description: Connect an Agent to a 1mg SkillHub registry and use the official SkillHub CLI to search, install, list, or explicitly upgrade 1mg SkillHub skills. Use when a user asks to connect 1mg SkillHub, install a 1mg SkillHub skill, or manage skills previously installed from 1mg SkillHub.
 version: 2.0.2
 license: Apache-2.0
 ---
 
 # SkillHub CLI
 
-Use the registry that supplied this guide to connect the current Agent and manage SkillHub packages with the first-party `@astron-team/skillhub` CLI.
+Use the registry that supplied this guide to connect the current Agent and manage 1mg SkillHub packages with the first-party `@astron-team/skillhub` CLI.
 
 ## Resolve The Registry
 
@@ -16,7 +16,7 @@ Resolve `<registry>` once before composing commands. For an already installed Sk
 1. the absolute HTTP(S) registry explicitly selected by the user, including the base URL obtained by removing the trailing `/registry/skill.md` from the URL used to fetch this guide;
 2. `SKILLHUB_REGISTRY`;
 3. the `registry` field in `~/.skillhub/config.json`;
-4. `https://skill.xfyun.cn`.
+4. `https://skillhub.1mg.com`.
 
 Use only an absolute HTTP(S) URL. Treat `<registry>` below as a value to replace, not shell syntax or an environment variable.
 
@@ -39,7 +39,7 @@ If package metadata proves another owner or package, or the version output is un
 
 Only after the user separately confirms removal of that exact identified launcher may you use its package manager's supported uninstall command, refresh command lookup, and install the first-party CLI. Never unlink an executable directly, remove an identity-unknown or system-managed command, use elevated privileges, edit shell startup files, or delete a directory merely to take over the command. If the owner or package source cannot be proven, stop and give the user the resolved path and read-only findings.
 
-Replacing the executable must not replace the other tool's data. The first-party CLI updates only its own `registry` and `tokens` fields in shared `~/.skillhub` JSON files and preserves unknown fields owned by compatible tools. Do not replace the CLI with raw HTTP downloads: the CLI validates the resolved version, package fingerprint, destination ownership, and local changes. Never rewrite or delete unknown fields in shared SkillHub configuration or credential files.
+Replacing the executable must not replace the other tool's data. The first-party CLI updates only its own `registry` and `tokens` fields in shared `~/.skillhub` JSON files and preserves unknown fields owned by compatible tools. Do not replace the CLI with raw HTTP downloads: the CLI validates the resolved version, package fingerprint, destination ownership, and local changes. Never rewrite or delete unknown fields in shared 1mg SkillHub configuration or credential files.
 
 Before using an operation or flag not shown in this Skill, inspect both live help surfaces for the selected CLI:
 
@@ -52,12 +52,12 @@ Repository documentation may describe unreleased behavior. If neither live help 
 
 ## Choose The Flow
 
-- **Connect SkillHub:** ensure `@global/skillhub-cli` is installed for the current Agent at user scope, then continue the requested operation.
+- **Connect 1mg SkillHub:** ensure `@global/skillhub-cli` is installed for the current Agent at user scope, then continue the requested operation.
 - **Install an exact Skill:** install the requested coordinate and version directly from this registry; do not search for or substitute a similarly named package.
 - **Discover a Skill:** search this registry first. If it is unavailable or has no suitable result, report that outcome and ask before querying another registry.
 - **Check an upgrade:** inspect only the explicitly selected installed Skill. Never upgrade every installation implicitly.
 
-An explicit request to connect SkillHub authorizes installing the latest first-party CLI globally. It does not authorize removing another `skillhub` launcher, replacing Skill files with local changes, changing registries, publishing content, using elevated privileges, or deleting third-party configuration or credentials. Launcher removal requires the separate, exact confirmation described above.
+An explicit request to connect 1mg SkillHub authorizes installing the latest first-party CLI globally. It does not authorize removing another `skillhub` launcher, replacing Skill files with local changes, changing registries, publishing content, using elevated privileges, or deleting third-party configuration or credentials. Launcher removal requires the separate, exact confirmation described above.
 
 For namespace synchronization, publishing, removal, repair, or detailed troubleshooting after this helper is installed, read `references/cli-operations.md`. Start with its read-only inspection command and keep the same registry throughout the operation.
 
@@ -120,7 +120,7 @@ Never ask the user to paste a token into chat or place credentials in a prompt, 
 POSIX shell:
 
 ```bash
-read -rsp "SkillHub token: " SKILLHUB_TOKEN && echo
+read -rsp "1mg SkillHub token: " SKILLHUB_TOKEN && echo
 export SKILLHUB_TOKEN
 skillhub login --registry <registry>
 unset SKILLHUB_TOKEN
@@ -130,7 +130,7 @@ skillhub whoami --registry <registry>
 PowerShell 7:
 
 ```powershell
-$env:SKILLHUB_TOKEN = Read-Host "SkillHub token" -MaskInput
+$env:SKILLHUB_TOKEN = Read-Host "1mg SkillHub token" -MaskInput
 skillhub login --registry <registry>
 Remove-Item Env:SKILLHUB_TOKEN
 skillhub whoami --registry <registry>
