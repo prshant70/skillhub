@@ -58,29 +58,29 @@ describe('install-command', () => {
 
   it('uses the plain slug for the global namespace', () => {
     expect(buildInstallTarget('global', 'my-skill')).toBe('my-skill')
-    expect(buildInstallCommand('global', 'my-skill', 'https://skill.xfyun.cn')).toBe(
-      'npx clawhub install my-skill --registry https://skill.xfyun.cn',
+    expect(buildInstallCommand('global', 'my-skill', 'https://skillhub.1mg.com')).toBe(
+      'npx clawhub install my-skill --registry https://skillhub.1mg.com',
     )
   })
 
   it('prefixes non-global namespaces in the install target', () => {
     expect(buildInstallTarget('team-alpha', 'my-skill')).toBe('team-alpha--my-skill')
-    expect(buildInstallCommand('team-alpha', 'my-skill', 'https://skill.xfyun.cn')).toBe(
-      'npx clawhub install team-alpha--my-skill --registry https://skill.xfyun.cn',
+    expect(buildInstallCommand('team-alpha', 'my-skill', 'https://skillhub.1mg.com')).toBe(
+      'npx clawhub install team-alpha--my-skill --registry https://skillhub.1mg.com',
     )
   })
 
   it('builds a one-line SkillHub npx command for the global namespace', () => {
     expect(buildSkillhubCoordinate('global', 'my-skill')).toBe('@global/my-skill')
-    expect(buildSkillhubInstallCommand('global', 'my-skill', 'https://skill.xfyun.cn', '1.2.3')).toBe(
-      'npx @astron-team/skillhub@latest install @global/my-skill --version 1.2.3 --registry https://skill.xfyun.cn',
+    expect(buildSkillhubInstallCommand('global', 'my-skill', 'https://skillhub.1mg.com', '1.2.3')).toBe(
+      'npx @astron-team/skillhub@latest install @global/my-skill --version 1.2.3 --registry https://skillhub.1mg.com',
     )
   })
 
   it('builds a one-line SkillHub npx command with namespace for team skills', () => {
     expect(buildSkillhubCoordinate('team-alpha', 'my-skill')).toBe('@team-alpha/my-skill')
-    expect(buildSkillhubInstallCommand('team-alpha', 'my-skill', 'https://skill.xfyun.cn')).toBe(
-      'npx @astron-team/skillhub@latest install @team-alpha/my-skill --registry https://skill.xfyun.cn',
+    expect(buildSkillhubInstallCommand('team-alpha', 'my-skill', 'https://skillhub.1mg.com')).toBe(
+      'npx @astron-team/skillhub@latest install @team-alpha/my-skill --registry https://skillhub.1mg.com',
     )
   })
 
@@ -91,7 +91,7 @@ describe('install-command', () => {
     expect(buildSkillhubInstallCommand(
       'global',
       'my-skill',
-      'https://skill.xfyun.cn',
+      'https://skillhub.1mg.com',
       '1.0.0&echo INJECTED',
     )).toBe('')
   })

@@ -6,7 +6,7 @@ import { resolvePublicRegistryUrl } from '@/shared/lib/registry-url'
 
 function getAppBaseUrl(): string {
   if (typeof window === 'undefined') {
-    return 'https://skill.xfyun.cn'
+    return 'https://skillhub.1mg.com'
   }
   const runtimeConfig = (window as unknown as Record<string, unknown>).__SKILLHUB_RUNTIME_CONFIG__ as { appBaseUrl?: string } | undefined
   return resolvePublicRegistryUrl(
