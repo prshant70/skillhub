@@ -1,0 +1,19 @@
+docs/1mg-skillhub-guide.md
+  s_e1d5f1a609ce96::t_7d10f00dc1365a 1-347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bb2f546d165badc68f35318eaebfef54abbdb33",
+  "prompts": {},
+  "sessions": {
+    "s_e1d5f1a609ce96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8203240-5383-4cfa-b960-a5a673e81d5e",
+        "model": "unknown"
+      },
+      "human_author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
