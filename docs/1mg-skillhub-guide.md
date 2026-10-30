@@ -34,17 +34,18 @@ platform administrators. Regular users will not need it.
 
 ## Finding skills
 
-Once you are in, there are three ways to find something.
+Once you are in, there are two ways to find something.
 
 **Search** is the main one. The search box matches skill names and descriptions.
 
 **Browse** from the Skills page if you are not sure what you are looking for.
 
-**Open-source catalogue** under the GitHub section lists skills discovered from
-public GitHub repositories, reviewed before they appear.
-
 Every skill has a detail page showing what it does, who published it, its
 version history, and the exact command to install it.
+
+There is also a **GitHub Skills** item in the top navigation. It is part of the
+upstream project and lists skills synced from public GitHub repositories. We do
+not sync from GitHub, so that page will always be empty — ignore it.
 
 ### How skills are named
 
