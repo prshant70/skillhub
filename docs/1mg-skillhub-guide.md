@@ -43,10 +43,6 @@ Once you are in, there are two ways to find something.
 Every skill has a detail page showing what it does, who published it, its
 version history, and the exact command to install it.
 
-There is also a **GitHub Skills** item in the top navigation. It is part of the
-upstream project and lists skills synced from public GitHub repositories. We do
-not sync from GitHub, so that page will always be empty — ignore it.
-
 ### How skills are named
 
 Skills use a two-part coordinate:
