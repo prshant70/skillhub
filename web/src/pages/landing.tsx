@@ -480,10 +480,10 @@ export function LandingPage() {
           <h2 className="mb-3 text-2xl font-medium tracking-tight text-foreground md:text-3xl">{t('landing.experience.cta.title')}</h2>
           <p className="mb-8 text-muted-foreground">{t('landing.experience.cta.description')}</p>
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <a href="https://github.com/iflytek/skillhub" target="_blank" rel="noreferrer" className="btn-pill btn-pill-primary">
+            <a href="https://github.com/prshant70/skillhub" target="_blank" rel="noreferrer" className="btn-pill btn-pill-primary">
               {t('landing.experience.cta.deploy')}
             </a>
-            <a href="https://iflytek.github.io/skillhub/" target="_blank" rel="noreferrer" className="group btn-pill btn-pill-outline inline-flex items-center gap-2">
+            <a href="https://github.com/prshant70/skillhub/tree/1mg-main/docs/skillhub" target="_blank" rel="noreferrer" className="group btn-pill btn-pill-outline inline-flex items-center gap-2">
               {t('landing.experience.cta.docs')} <CheckCircle2 className="h-4 w-4" />
             </a>
           </div>

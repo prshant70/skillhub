@@ -18,7 +18,7 @@ public class OpenApiConfig {
     public OpenAPI skillhubOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("SkillHub API")
+                        .title("1mg SkillHub API")
                         .description("Skills Registry Platform")
                         .version("0.1.0-beta.7"))
                 .servers(List.of(

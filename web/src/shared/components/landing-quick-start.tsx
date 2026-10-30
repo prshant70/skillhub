@@ -24,7 +24,7 @@ const ACCESS_MODES: AccessModeOption[] = [
 
 function getRegistryUrl(): string {
   if (typeof window === 'undefined') {
-    return 'https://skill.xfyun.cn'
+    return 'https://skillhub.1mg.com'
   }
 
   return resolvePublicRegistryUrl(
@@ -270,7 +270,7 @@ function CliAccessPanel() {
           <span className="text-border">·</span>
           <span className="break-all font-mono">registry: {registryUrl}</span>
         </div>
-        <a href="https://github.com/iflytek/skillhub/tree/main/cli" target="_blank" rel="noreferrer" className="group flex items-center gap-1 font-medium text-blue-600 transition-colors hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-blue-400 dark:hover:text-blue-300">
+        <a href="https://github.com/prshant70/skillhub/tree/1mg-main/cli" target="_blank" rel="noreferrer" className="group flex items-center gap-1 font-medium text-blue-600 transition-colors hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-blue-400 dark:hover:text-blue-300">
           {t('landing.experience.quickStart.cli.docs')}
           <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" />
         </a>

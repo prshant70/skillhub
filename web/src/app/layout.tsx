@@ -82,7 +82,6 @@ export function Layout() {
     { label: t('nav.landing'), to: '/', exact: true },
     { label: t('nav.publish'), to: '/dashboard/publish', auth: true },
     { label: t('nav.marketplace'), to: '/search' },
-    { label: t('nav.githubSkills'), to: '/github' },
     { label: t('nav.suites'), to: '/suites' },
     { label: t('nav.dashboard'), to: '/dashboard', auth: true },
   ]
@@ -249,26 +248,26 @@ export function Layout() {
             <div>
               <h4 className="mb-4 text-sm font-semibold text-foreground">{t('footer.developers')}</h4>
               <ul className="space-y-2.5 text-sm text-muted-foreground">
-                <li><a href="https://github.com/iflytek/skillhub/tree/main/docs/skillhub" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.docs')}</a></li>
+                <li><a href="https://github.com/prshant70/skillhub/tree/1mg-main/docs/skillhub" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.docs')}</a></li>
                 <li><a href="https://www.npmjs.com/package/@astron-team/skillhub" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>CLI</a></li>
-                <li><a href="https://github.com/iflytek/skillhub" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>GitHub</a></li>
+                <li><a href="https://github.com/prshant70/skillhub" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>GitHub</a></li>
               </ul>
             </div>
 
             <div>
               <h4 className="mb-4 text-sm font-semibold text-foreground">{t('footer.project')}</h4>
               <ul className="space-y-2.5 text-sm text-muted-foreground">
-                <li><a href="https://github.com/iflytek/skillhub/blob/main/LICENSE" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.license')}</a></li>
-                <li><a href="https://github.com/iflytek/skillhub/blob/main/CONTRIBUTING.md" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.contributing')}</a></li>
-                <li><a href="https://github.com/iflytek/skillhub/releases" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.changelog')}</a></li>
-                <li><a href="https://github.com/iflytek/skillhub/blob/main/CODE_OF_CONDUCT.md" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.codeOfConduct')}</a></li>
+                <li><a href="https://github.com/prshant70/skillhub/blob/1mg-main/LICENSE" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.license')}</a></li>
+                <li><a href="https://github.com/prshant70/skillhub/blob/1mg-main/CONTRIBUTING.md" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.contributing')}</a></li>
+                <li><a href="https://github.com/prshant70/skillhub/releases" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.changelog')}</a></li>
+                <li><a href="https://github.com/prshant70/skillhub/blob/1mg-main/CODE_OF_CONDUCT.md" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.codeOfConduct')}</a></li>
               </ul>
             </div>
 
             <div>
               <h4 className="mb-4 text-sm font-semibold text-foreground">{t('footer.resources')}</h4>
               <ul className="space-y-2.5 text-sm text-muted-foreground">
-                <li><a href="https://github.com/iflytek/skillhub/discussions" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.community')}</a></li>
+                <li><a href="https://github.com/prshant70/skillhub/discussions" target="_blank" rel="noreferrer" className={FOOTER_LINK_CLASS_NAME}>{t('footer.community')}</a></li>
                 <li><Link to="/privacy" className={FOOTER_LINK_CLASS_NAME}>{t('footer.privacy')}</Link></li>
                 <li><Link to="/terms" className={FOOTER_LINK_CLASS_NAME}>{t('footer.terms')}</Link></li>
               </ul>
