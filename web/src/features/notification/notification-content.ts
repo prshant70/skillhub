@@ -31,12 +31,11 @@ const localizedEvents = new Set([
 ])
 
 export function resolveNotificationDisplay(item: NotificationItem, language: string): NotificationDisplay {
-  const zh = language.toLowerCase().startsWith('zh')
   const t = i18n.getFixedT(language)
   const body = parseBody(item.bodyJson)
   const skillName = body.skillName ?? ''
   const version = body.version ?? ''
-  const versionSuffix = version ? (zh ? `（${version}）` : ` (${version})`) : ''
+  const versionSuffix = version ? ` (${version})` : ''
 
   if (!localizedEvents.has(item.eventType)) {
     return { title: item.title, description: '' }

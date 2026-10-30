@@ -8,7 +8,7 @@ export const CENTERED_DASHBOARD_CONTENT_CLASS_NAME = 'mx-auto min-h-[calc(100vh-
 export const REVIEW_DETAIL_CONTENT_CLASS_NAME = 'mx-auto min-h-[calc(100vh-11rem)] w-full max-w-[1500px]'
 
 export const DASHBOARD_PATH_PREFIXES = ['/dashboard', '/settings/'] as const
-export const AUTH_ENTRY_PATHS = ['/login', '/register', '/reset-password'] as const
+export const AUTH_ENTRY_PATHS = ['/login', '/register'] as const
 export const SPLIT_AUTH_PATHS = ['/login', '/register'] as const
 
 interface AppMainContentLayout {

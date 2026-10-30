@@ -1,7 +1,6 @@
 package com.iflytek.skillhub.controller;
 
 import com.iflytek.skillhub.auth.local.LocalAuthService;
-import com.iflytek.skillhub.auth.local.PasswordResetService;
 import com.iflytek.skillhub.auth.exception.AuthFlowException;
 import com.iflytek.skillhub.auth.rbac.PlatformPrincipal;
 import com.iflytek.skillhub.auth.session.PlatformSessionService;
@@ -13,8 +12,6 @@ import com.iflytek.skillhub.dto.ChangePasswordRequest;
 import com.iflytek.skillhub.dto.LocalLoginRequest;
 import com.iflytek.skillhub.dto.LocalRegisterRequest;
 import com.iflytek.skillhub.dto.LocalAuthCapabilitiesResponse;
-import com.iflytek.skillhub.dto.PasswordResetConfirmRequest;
-import com.iflytek.skillhub.dto.PasswordResetRequestDto;
 import com.iflytek.skillhub.exception.UnauthorizedException;
 import com.iflytek.skillhub.metrics.SkillHubMetrics;
 import com.iflytek.skillhub.ratelimit.RateLimit;
@@ -32,6 +29,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * HTTP endpoints for local account registration, login, and password changes.
+ *
+ * Password reset is intentionally absent: credentials are managed from backend
+ * configuration, so there is no self-service or admin-triggered reset flow.
  */
 @RestController
 @RequestMapping("/api/v1/auth/local")
@@ -41,7 +41,6 @@ public class LocalAuthController extends BaseApiController {
     private final SkillHubMetrics skillHubMetrics;
     private final PlatformSessionService platformSessionService;
     private final AuthFailureThrottleService authFailureThrottleService;
-    private final PasswordResetService passwordResetService;
     private final AuthMeResponseAssembler authMeResponseAssembler;
     private final LocalAuthSettingsService authSettings;
 
@@ -50,7 +49,6 @@ public class LocalAuthController extends BaseApiController {
                                SkillHubMetrics skillHubMetrics,
                                PlatformSessionService platformSessionService,
                                AuthFailureThrottleService authFailureThrottleService,
-                               PasswordResetService passwordResetService,
                                AuthMeResponseAssembler authMeResponseAssembler,
                                LocalAuthSettingsService authSettings) {
         super(responseFactory);
@@ -58,7 +56,6 @@ public class LocalAuthController extends BaseApiController {
         this.skillHubMetrics = skillHubMetrics;
         this.platformSessionService = platformSessionService;
         this.authFailureThrottleService = authFailureThrottleService;
-        this.passwordResetService = passwordResetService;
         this.authMeResponseAssembler = authMeResponseAssembler;
         this.authSettings = authSettings;
     }
@@ -113,20 +110,6 @@ public class LocalAuthController extends BaseApiController {
         }
         localAuthService.changePassword(principal.userId(), request.currentPassword(), request.newPassword());
         return ok("response.success.updated", null);
-    }
-
-    @PostMapping("/password-reset/request")
-    @RateLimit(category = "auth-password-reset-request", authenticated = 8, anonymous = 5, windowSeconds = 300)
-    public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequestDto request) {
-        passwordResetService.requestPasswordReset(request.email());
-        return ok("response.auth.password.reset.requested", null);
-    }
-
-    @PostMapping("/password-reset/confirm")
-    @RateLimit(category = "auth-password-reset-confirm", authenticated = 10, anonymous = 10, windowSeconds = 300)
-    public ApiResponse<Void> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
-        passwordResetService.confirmPasswordReset(request.email(), request.code(), request.newPassword());
-        return ok("response.auth.password.reset.confirmed", null);
     }
 
     private String resolveClientIp(HttpServletRequest request) {

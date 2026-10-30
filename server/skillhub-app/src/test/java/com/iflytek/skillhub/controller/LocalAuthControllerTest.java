@@ -13,7 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.iflytek.skillhub.auth.exception.AuthFlowException;
 import com.iflytek.skillhub.auth.local.LocalAuthService;
 import com.iflytek.skillhub.auth.local.LocalCredentialRepository;
-import com.iflytek.skillhub.auth.local.PasswordResetService;
 import com.iflytek.skillhub.auth.settings.LocalAuthSettings;
 import com.iflytek.skillhub.auth.settings.LocalAuthSettingsService;
 import com.iflytek.skillhub.auth.rbac.PlatformPrincipal;
@@ -56,9 +55,6 @@ class LocalAuthControllerTest {
 
     @MockBean
     private AuthFailureThrottleService authFailureThrottleService;
-
-    @MockBean
-    private PasswordResetService passwordResetService;
 
     @MockBean
     private LocalCredentialRepository localCredentialRepository;
@@ -283,60 +279,8 @@ class LocalAuthControllerTest {
         verify(localAuthService, never()).changePassword("usr_3", "old", "Newpass123!");
     }
 
-    @Test
-    void requestPasswordReset_returnsGenericSuccessEnvelope() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/local/password-reset/request")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"email":"alice@example.com"}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(0));
 
-        verify(passwordResetService).requestPasswordReset("alice@example.com");
-    }
 
-    @Test
-    void requestPasswordReset_rejectsInvalidEmailFormat() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/local/password-reset/request")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"email":"alice"}
-                    """))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value(400));
 
-        verify(passwordResetService, never()).requestPasswordReset("alice");
-    }
-
-    @Test
-    void confirmPasswordReset_returnsUpdatedEnvelope() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/local/password-reset/confirm")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"email":"alice@example.com","code":"123456","newPassword":"Abcd123!"}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(0));
-
-        verify(passwordResetService).confirmPasswordReset("alice@example.com", "123456", "Abcd123!");
-    }
-
-    @Test
-    void confirmPasswordReset_rejectsInvalidEmailFormat() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/local/password-reset/confirm")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"email":"alice","code":"123456","newPassword":"Abcd123!"}
-                    """))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value(400));
-
-        verify(passwordResetService, never()).confirmPasswordReset("alice", "123456", "Abcd123!");
-    }
 
 }

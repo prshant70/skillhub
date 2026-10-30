@@ -13,7 +13,7 @@ interface LoginButtonProps {
 }
 
 const packagedIconProviders = new Set([
-  'github', 'gitlab', 'feishu', 'dingtalk', 'keycloak', 'auth0', 'okta',
+  'github', 'gitlab', 'google', 'feishu', 'dingtalk', 'keycloak', 'auth0', 'okta',
 ])
 
 /**
@@ -53,7 +53,7 @@ export function AuthMethodButtonList({
   if (isLoading) {
     return (
       <div className={cn(compact ? 'grid grid-cols-2 gap-2 sm:grid-cols-4' : 'space-y-3')}>
-        <Button className="h-12" disabled variant="outline">
+        <Button className={cn('h-12', compact ? undefined : 'w-full')} disabled variant="outline">
           <div className={cn('rounded-full animate-shimmer', compact ? 'h-4 w-4' : 'mr-3 h-5 w-5')} />
           {compact ? t('loginButton.loadingShort') : t('loginButton.loading')}
         </Button>

@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "name": "1mg SkillHub"
+  },
   "compliance": {
     "title": "Compliance claims",
     "mappingCount": "{{count}} items",
@@ -358,6 +361,8 @@
     "externalIdentityHint": "Feishu, DingTalk, GitHub, GitLab, and similar entries are advertised by the server. Account ownership is decided by backend binding and organization membership.",
     "tabPassword": "Password",
     "tabOAuth": "OAuth",
+    "tabAdmin": "Admin Login",
+    "noOAuthMethods": "No single sign-on provider is configured yet.",
     "username": "Username",
     "password": "Password",
     "usernamePlaceholder": "Enter username",
@@ -368,7 +373,6 @@
     "hidePassword": "Hide password",
     "submitting": "Logging in...",
     "submit": "Login",
-    "forgotPassword": "Forgot password?",
     "noAccount": "Don't have an account?",
     "register": "Sign up now",
     "oauthHint": "After OAuth authentication, you will be automatically redirected back to this site.",
@@ -411,31 +415,6 @@
     "passwordTooWeak": "Password must contain at least 3 character types (uppercase, lowercase, numbers, special)",
     "emailInvalid": "Invalid email format",
     "emailExists": "Email already exists"
-  },
-  "resetPassword": {
-    "title": "Reset Password",
-    "subtitle": "Enter your email, verification code, and new password.",
-    "email": "Email",
-    "emailPlaceholder": "Enter email",
-    "emailRequired": "Please enter your email",
-    "emailInvalid": "Please enter a valid email address",
-    "code": "Verification Code",
-    "codePlaceholder": "Enter 6-digit verification code",
-    "sendCode": "Send Verification Code",
-    "sendingCode": "Sending...",
-    "codeSentMessage": "If the account is eligible, a verification code has been sent.",
-    "codeRequired": "Please enter the verification code",
-    "newPassword": "New Password",
-    "newPasswordPlaceholder": "Enter new password",
-    "newPasswordRequired": "Please enter a new password",
-    "confirmPassword": "Confirm Password",
-    "confirmPasswordPlaceholder": "Re-enter new password",
-    "passwordMismatch": "The two passwords do not match",
-    "submit": "Reset Password",
-    "submitting": "Resetting...",
-    "successMessage": "Password reset successful. Please sign in with your new password.",
-    "genericError": "Failed to reset password",
-    "backToLogin": "Back to login"
   },
   "device": {
     "title": "Device Authorization",
@@ -1236,7 +1215,6 @@
     "approveUser": "Approve",
     "disable": "Disable",
     "enable": "Enable",
-    "resetPassword": "Reset Password",
     "totalRecords": "Total {{total}} records, page {{page}}",
     "prevPage": "Previous",
     "nextPage": "Next",
@@ -1251,8 +1229,7 @@
     "roleSuperAdmin": "Super Admin",
     "confirmAction": "Confirm Action",
     "confirmDisable": "Are you sure you want to disable user {{username}}?",
-    "confirmEnable": "Are you sure you want to enable user {{username}}?",
-    "confirmResetPassword": "Send password reset verification code to user {{username}}?"
+    "confirmEnable": "Are you sure you want to enable user {{username}}?"
   },
   "adminLabels": {
     "title": "Label Management",

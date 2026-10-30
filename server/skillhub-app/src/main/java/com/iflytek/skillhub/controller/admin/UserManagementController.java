@@ -1,7 +1,6 @@
 package com.iflytek.skillhub.controller.admin;
 
 import com.iflytek.skillhub.controller.BaseApiController;
-import com.iflytek.skillhub.auth.local.PasswordResetService;
 import com.iflytek.skillhub.auth.rbac.PlatformPrincipal;
 import com.iflytek.skillhub.dto.AdminUserMutationResponse;
 import com.iflytek.skillhub.dto.AdminUserRoleUpdateRequest;
@@ -10,7 +9,6 @@ import com.iflytek.skillhub.dto.AdminUserSummaryResponse;
 import com.iflytek.skillhub.dto.ApiResponse;
 import com.iflytek.skillhub.dto.ApiResponseFactory;
 import com.iflytek.skillhub.dto.PageResponse;
-import com.iflytek.skillhub.exception.UnauthorizedException;
 import com.iflytek.skillhub.service.AdminUserAppService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,14 +24,11 @@ import org.springframework.web.bind.annotation.*;
 public class UserManagementController extends BaseApiController {
 
     private final AdminUserAppService adminUserAppService;
-    private final PasswordResetService passwordResetService;
 
     public UserManagementController(AdminUserAppService adminUserAppService,
-                                    PasswordResetService passwordResetService,
                                     ApiResponseFactory responseFactory) {
         super(responseFactory);
         this.adminUserAppService = adminUserAppService;
-        this.passwordResetService = passwordResetService;
     }
 
     @GetMapping
@@ -80,16 +75,5 @@ public class UserManagementController extends BaseApiController {
     @PreAuthorize("hasAnyRole('USER_ADMIN', 'SUPER_ADMIN')")
     public ApiResponse<AdminUserMutationResponse> enableUser(@PathVariable String userId) {
         return ok("response.success.updated", adminUserAppService.updateUserStatus(userId, "ACTIVE"));
-    }
-
-    @PostMapping("/{userId}/password-reset")
-    @PreAuthorize("hasAnyRole('USER_ADMIN', 'SUPER_ADMIN')")
-    public ApiResponse<Void> triggerPasswordReset(@PathVariable String userId,
-                                                  @AuthenticationPrincipal PlatformPrincipal principal) {
-        if (principal == null) {
-            throw new UnauthorizedException("error.auth.required");
-        }
-        passwordResetService.adminTriggerPasswordReset(userId, principal.userId());
-        return ok("response.auth.password.reset.requested", null);
     }
 }

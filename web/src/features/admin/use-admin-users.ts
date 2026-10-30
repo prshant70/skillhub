@@ -97,13 +97,3 @@ export function useEnableUser() {
     },
   })
 }
-
-export function useTriggerUserPasswordReset() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (userId: string) => adminApi.triggerPasswordReset(userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
-    },
-  })
-}

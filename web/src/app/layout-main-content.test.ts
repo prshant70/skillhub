@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  AUTH_MAIN_CLASS_NAME,
   CENTERED_DASHBOARD_CONTENT_CLASS_NAME,
   CENTERED_MAIN_CLASS_NAME,
   CENTERED_SEARCH_CONTENT_CLASS_NAME,
@@ -42,15 +41,6 @@ describe('getAppMainContentLayout', () => {
     for (const pathname of ['/login', '/register']) {
       expect(getAppMainContentLayout(pathname)).toEqual({
         mainClassName: SPLIT_AUTH_MAIN_CLASS_NAME,
-        contentClassName: '',
-      })
-    }
-  })
-
-  it('keeps the compact entry layout for password reset', () => {
-    for (const pathname of ['/reset-password']) {
-      expect(getAppMainContentLayout(pathname)).toEqual({
-        mainClassName: AUTH_MAIN_CLASS_NAME,
         contentClassName: '',
       })
     }

@@ -4,12 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { Menu, X } from 'lucide-react'
 import { useAuth } from '@/features/auth/use-auth'
 import { BrandMark } from '@/shared/components/brand-mark'
-import { LanguageSwitcher } from '@/shared/components/language-switcher'
 import { ThemeToggle } from '@/shared/components/theme-toggle'
 import { UserMenu } from '@/shared/components/user-menu'
 import { NotificationBell } from '@/features/notification/notification-bell'
 import { dismissOpenOverlays } from '@/shared/lib/dismiss-open-overlays'
-import { syncDocumentLanguage } from '@/shared/lib/document-language'
 import { DashboardSidebar, SIDEBAR_GROUPS } from '@/pages/dashboard'
 import { canViewGovernanceCenter } from '@/shared/lib/governance-access'
 import { getAppHeaderClassName } from './layout-header-style'
@@ -24,7 +22,7 @@ const FOOTER_LINK_CLASS_NAME = 'group relative inline-flex py-0.5 transition-col
  * fallback used while lazy route modules are loading.
  */
 export function Layout() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { pathname, resolvedPathname } = useRouterState({
     select: (s) => ({
       pathname: s.location.pathname,
@@ -52,10 +50,6 @@ export function Layout() {
       )),
     }))
     .filter((group) => group.items.length > 0)
-
-  useEffect(() => {
-    syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language)
-  }, [i18n.language, i18n.resolvedLanguage])
 
   useEffect(() => {
     const updateHeaderElevation = () => {
@@ -123,7 +117,7 @@ export function Layout() {
       >
         {!isSplitAuthRoute ? (
           <Link to="/" className="text-xl font-semibold tracking-tight flex-shrink-0" style={{ color: 'hsl(var(--foreground))' }}>
-            SkillHub
+            {t('brand.name')}
           </Link>
         ) : null}
 
@@ -166,7 +160,6 @@ export function Layout() {
             </button>
           ) : null}
           <ThemeToggle />
-          <LanguageSwitcher />
           {user && <NotificationBell />}
           {isLoading ? null : user ? (
             <UserMenu user={user} />
@@ -239,7 +232,7 @@ export function Layout() {
             <div className="col-span-2 md:col-span-1">
               <div className="mb-4 flex items-center gap-2.5">
                 <BrandMark className="h-8 w-8 rounded-lg bg-background ring-1 ring-border/70" />
-                <span className="font-semibold text-foreground">SkillHub</span>
+                <span className="font-semibold text-foreground">{t('brand.name')}</span>
               </div>
               <p className="text-sm text-muted-foreground">{t('layout.footerDescription')}</p>
             </div>

@@ -44,6 +44,24 @@ class AccessPolicyTest {
     }
 
     @Test
+    void accessPolicyFactory_lowerCasesAndTrimsConfiguredDomains() {
+        var factory = new AccessPolicyFactory();
+        factory.setMode("EMAIL_DOMAIN");
+        factory.setAllowedEmailDomains(java.util.List.of("  1MG.com  "));
+        var claims = new OAuthClaims("google", "123", "user@1mg.com", true, "user", Map.of());
+        assertThat(factory.accessPolicy().evaluate(claims)).isEqualTo(AccessDecision.ALLOW);
+    }
+
+    @Test
+    void accessPolicyFactory_ignoresBlankConfiguredDomains() {
+        var factory = new AccessPolicyFactory();
+        factory.setMode("EMAIL_DOMAIN");
+        factory.setAllowedEmailDomains(java.util.List.of("", "   "));
+        var claims = new OAuthClaims("google", "123", "user@1mg.com", true, "user", Map.of());
+        assertThat(factory.accessPolicy().evaluate(claims)).isEqualTo(AccessDecision.DENY);
+    }
+
+    @Test
     void providerAllowlistPolicy_allowsMatchingProvider() {
         var policy = new ProviderAllowlistAccessPolicy(Set.of("github"));
         var claims = new OAuthClaims("github", "123", "u@a.com", true, "user", Map.of());

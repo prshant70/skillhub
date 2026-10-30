@@ -61,6 +61,16 @@ spring:
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             client-name: GitHub
             authorization-grant-type: authorization_code
+          google:
+            client-id: ${OAUTH2_GOOGLE_CLIENT_ID:placeholder}
+            client-secret: ${OAUTH2_GOOGLE_CLIENT_SECRET:placeholder}
+            scope:
+              - openid
+              - profile
+              - email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: ${OAUTH2_GOOGLE_DISPLAY_NAME:Google}
           gitlab:
             client-id: ${OAUTH2_GITLAB_CLIENT_ID:placeholder}
             client-secret: ${OAUTH2_GITLAB_CLIENT_SECRET:placeholder}
@@ -190,10 +200,6 @@ skillhub:
       enabled: ${SKILLHUB_AUTH_DIRECT_ENABLED:false}
     session-bootstrap:
       enabled: ${SKILLHUB_AUTH_SESSION_BOOTSTRAP_ENABLED:false}
-    password-reset:
-      code-expiry: ${SKILLHUB_AUTH_PASSWORD_RESET_CODE_EXPIRY:PT10M}
-      email-from-address: ${SKILLHUB_AUTH_PASSWORD_RESET_FROM_ADDRESS:noreply@skillhub.local}
-      email-from-name: ${SKILLHUB_AUTH_PASSWORD_RESET_FROM_NAME:SkillHub}
   namespace:
     # Whether a newly activated account gets a namespace of its own.
     # Slug and display-name templates use safe code defaults in PersonalNamespaceProvisioningProperties.
@@ -202,7 +208,10 @@ skillhub:
   public:
     base-url: ${SKILLHUB_PUBLIC_BASE_URL:}
   access-policy:
-    mode: OPEN
+    # OPEN | EMAIL_DOMAIN | PROVIDER_ALLOWLIST | SUBJECT_WHITELIST
+    mode: ${SKILLHUB_ACCESS_POLICY_MODE:OPEN}
+    # Comma-separated, e.g. "1mg.com". Only consulted when mode=EMAIL_DOMAIN.
+    allowed-email-domains: ${SKILLHUB_ACCESS_POLICY_ALLOWED_EMAIL_DOMAINS:}
   storage:
     provider: ${SKILLHUB_STORAGE_PROVIDER:local}
     local:

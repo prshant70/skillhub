@@ -7,8 +7,6 @@ vi.mock('@/api/client', () => ({ skillAvatarApi: api, buildApiUrl: (url: string)
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: translation.t }) }))
 import { SkillAvatarEditor } from './skill-avatar-editor'
 import en from '@/i18n/locales/en.json'
-import zh from '@/i18n/locales/zh.json'
-import ru from '@/i18n/locales/ru.json'
 
 async function selectImage() {
   fireEvent.change(screen.getByLabelText('skillAvatar.choose'), { target: { files: [new File(['image'], 'avatar.png', { type: 'image/png' })] } })
@@ -39,7 +37,8 @@ describe('SkillAvatarEditor staged uploads', () => {
   })
   afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-  it.each([{ locale: 'en', messages: en }, { locale: 'zh', messages: zh }, { locale: 'ru', messages: ru }])('renders the cancel action from the actual $locale messages', async ({ messages }) => {
+  it('renders the cancel action from the actual english messages', async () => {
+    const messages = en
     translation.t = key => {
       let value: unknown = messages
       for (const part of key.split('.')) value = value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined

@@ -1,8 +1,6 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createInstance } from 'i18next'
-import { I18nextProvider } from 'react-i18next'
-import ko from '@/i18n/locales/ko.json'
 import { afterEach } from 'vitest'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -125,27 +123,8 @@ describe('LoginPage', () => {
     expect(html).toContain('login.title')
     expect(html).toContain('login.subtitle')
     expect(html).toContain('login.submit')
-    expect(html).not.toContain('login.tabEnterprise')
+    expect(html).not.toContain('login.tabOAuth')
     expect(html).toContain('login.register')
-  })
-
-  it('renders a complete Korean agreement with working policy links', async () => {
-    await koreanI18n.init({ lng: 'ko', resources: { ko: { translation: ko } } })
-    authMethodsFixture.localize = true
-    render(<I18nextProvider i18n={koreanI18n}><LoginPage /></I18nextProvider>)
-    const terms = screen.getByRole('link', { name: '이용약관' })
-    const privacy = screen.getByRole('link', { name: '개인정보처리방침' })
-    expect(terms.getAttribute('href')).toBe('/terms')
-    expect(privacy.getAttribute('href')).toBe('/privacy')
-    expect(terms.parentElement?.textContent).toBe('로그인하면 이용약관 및 개인정보처리방침에 동의하게 됩니다.')
-  })
-
-  it('shows a translated disabled-account reason instead of a missing key', async () => {
-    await koreanI18n.init({ lng: 'ko', resources: { ko: { translation: ko } } })
-    authMethodsFixture.localize = true
-    authMethodsFixture.reason = 'accountDisabled'
-    render(<I18nextProvider i18n={koreanI18n}><LoginPage /></I18nextProvider>)
-    expect(screen.getByText('비활성화된 계정입니다')).toBeTruthy()
   })
 
   it('hides password and registration entry when local authentication is disabled', () => {
@@ -182,31 +161,40 @@ describe('LoginPage', () => {
     await waitFor(() => expect(authMethodsFixture.navigate).toHaveBeenCalledWith({ to: '/skills?tab=mine' }))
   })
 
-  it('replaces the password form with configured session bootstrap and can switch back', () => {
+  it('defaults to single sign-on and can switch to the admin password tab', () => {
     authMethodsFixture.bootstrapEnabled = true
     render(<LoginPage />)
-    const personal = screen.getByRole('button', { name: 'login.tabPersonal' })
-    const organization = screen.getByRole('button', { name: 'login.tabEnterprise' })
+    const sso = screen.getByRole('button', { name: 'login.tabOAuth' })
+    const admin = screen.getByRole('button', { name: 'login.tabAdmin' })
 
-    expect(personal.getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).toBeNull()
+    // SSO is the landing tab, so the password form is not rendered at all.
+    expect(sso.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByLabelText('login.password')).toBeNull()
+    expect(screen.getByText('session bootstrap')).toBeTruthy()
 
-    fireEvent.click(organization)
-    expect(organization.getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).not.toBeNull()
-    expect(screen.getByText('session bootstrap').closest('[hidden]')).toBeNull()
+    fireEvent.click(admin)
+    expect(admin.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('login.password')).toBeTruthy()
+    expect(screen.queryByText('session bootstrap')).toBeNull()
 
-    fireEvent.click(personal)
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).toBeNull()
-    expect(screen.getByText('session bootstrap').closest('[hidden]')).not.toBeNull()
+    fireEvent.click(sso)
+    expect(screen.queryByLabelText('login.password')).toBeNull()
   })
 
-  it('does not show an organization entry when bootstrap is not configured', () => {
+  it('lands on the admin tab and hides the tab strip when no external method exists', () => {
     render(<LoginPage />)
 
-    expect(screen.queryByRole('button', { name: 'login.tabEnterprise' })).toBeNull()
-    expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.getByLabelText('login.password').closest('[hidden]')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabOAuth' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabAdmin' })).toBeNull()
+    expect(screen.getByLabelText('login.password')).toBeTruthy()
+  })
+
+  it('defaults to single sign-on when an OAuth provider is configured', () => {
+    authMethodsFixture.methods = [{ id: 'google', methodType: 'OAUTH_REDIRECT' }]
+    render(<LoginPage />)
+
+    expect(screen.getByRole('button', { name: 'login.tabOAuth' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByLabelText('login.password')).toBeNull()
   })
 
   it('keeps password login available without a warning when the method catalog fails', () => {
@@ -215,7 +203,7 @@ describe('LoginPage', () => {
     render(<LoginPage />)
 
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'login.tabEnterprise' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabOAuth' })).toBeNull()
     expect(screen.getByRole('button', { name: 'login.submit' })).toBeTruthy()
   })
 
@@ -223,7 +211,7 @@ describe('LoginPage', () => {
     authMethodsFixture.methods = [{ id: 'proxy', methodType: 'SESSION_BOOTSTRAP' }]
     render(<LoginPage />)
 
-    expect(screen.queryByRole('button', { name: 'login.tabEnterprise' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'login.tabOAuth' })).toBeNull()
     expect(screen.queryByText('session bootstrap')).toBeNull()
   })
 
@@ -233,7 +221,7 @@ describe('LoginPage', () => {
     authMethodsFixture.isError = true
     render(<LoginPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'login.tabEnterprise' }))
-    expect(screen.getByText('session bootstrap').closest('[hidden]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'login.tabOAuth' }))
+    expect(screen.getByText('session bootstrap')).toBeTruthy()
   })
 })

@@ -3,8 +3,6 @@ import { BASE_PATH } from '@/shared/lib/base-path'
 import type { components, paths } from './generated/schema'
 import type {
   ChangePasswordRequest,
-  PasswordResetConfirmRequest,
-  PasswordResetRequest,
   ApiToken,
   CreateTokenRequest,
   CreateTokenResponse,
@@ -810,26 +808,6 @@ export const authApi = {
 
   async changePassword(request: ChangePasswordRequest): Promise<void> {
     await fetchJson<void>('/api/v1/auth/local/change-password', {
-      method: 'POST',
-      headers: await ensureCsrfHeaders({
-        'Content-Type': 'application/json',
-      }),
-      body: JSON.stringify(request),
-    })
-  },
-
-  async requestPasswordReset(request: PasswordResetRequest): Promise<void> {
-    await fetchJson<void>('/api/v1/auth/local/password-reset/request', {
-      method: 'POST',
-      headers: await ensureCsrfHeaders({
-        'Content-Type': 'application/json',
-      }),
-      body: JSON.stringify(request),
-    })
-  },
-
-  async confirmPasswordReset(request: PasswordResetConfirmRequest): Promise<void> {
-    await fetchJson<void>('/api/v1/auth/local/password-reset/confirm', {
       method: 'POST',
       headers: await ensureCsrfHeaders({
         'Content-Type': 'application/json',
@@ -2119,13 +2097,6 @@ export const adminApi = {
 
   async enableUser(userId: string): Promise<void> {
     await fetchJson<void>(`/api/v1/admin/users/${userId}/enable`, {
-      method: 'POST',
-      headers: getCsrfHeaders(),
-    })
-  },
-
-  async triggerPasswordReset(userId: string): Promise<void> {
-    await fetchJson<void>(`/api/v1/admin/users/${userId}/password-reset`, {
       method: 'POST',
       headers: getCsrfHeaders(),
     })
