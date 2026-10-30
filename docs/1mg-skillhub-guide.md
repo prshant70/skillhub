@@ -1,8 +1,7 @@
 # 1mg SkillHub
 
 1mg SkillHub is an internal registry for agent skills. A skill is a small package
-of instructions and supporting files that teaches an AI agent how to do something
-the way 1mg does it — run a particular deploy, follow a review checklist, query a
+of instructions and supporting files that teaches an AI agent how to do something in a particular way i.e. run a particular deploy, follow a review checklist, query a
 specific system.
 
 Instead of everyone keeping their own prompts in a scratch file, you publish a
@@ -15,23 +14,21 @@ The registry runs at **https://skillhub.1mg.com**.
 ## Getting access
 
 Open https://skillhub.1mg.com and click **Login with Google**. Use your 1mg
-account. There is nothing to request and no form to fill in — the first sign-in
-creates your account.
+account, the first sign-in creates your account.
 
 Only `@1mg.com` Google accounts can sign in. Personal Gmail accounts are
-rejected, so you do not need to worry about picking the wrong account by
-mistake; it simply will not work.
+rejected.
 
-The **Admin Login** tab next to it is a username and password fallback for
+The **Admin Login** tab next to the OAuth tab is a username and password fallback for
 platform administrators. Regular users will not need it.
 
 ### If sign-in fails
 
-- **"Account is disabled"** — your account exists but has been turned off. Ask a
+- **"Account is disabled"** - your account exists but has been turned off. Ask a
   platform admin to re-enable it.
-- **Google says the app is blocked** — you are probably signed into a personal
+- **Google says the app is blocked** - you are probably signed into a personal
   Google account in that browser profile. Sign out, or use a different profile.
-- **Anything else** — note the error text and contact the platform team.
+- **Anything else** - note the error text and contact the platform team.
 
 ---
 
