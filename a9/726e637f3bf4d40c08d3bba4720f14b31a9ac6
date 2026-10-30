@@ -1,0 +1,14 @@
+docs/1mg-skillhub-guide.md
+  h_d30040f0a74eb1 4,17,20,22,27,29,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9726e637f3bf4d40c08d3bba4720f14b31a9ac6",
+  "prompts": {},
+  "humans": {
+    "h_d30040f0a74eb1": {
+      "author": "Prashant Mishra <prashant.mishra@1mg.com>"
+    }
+  }
+}
