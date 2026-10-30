@@ -82,7 +82,6 @@ export function Layout() {
     { label: t('nav.landing'), to: '/', exact: true },
     { label: t('nav.publish'), to: '/dashboard/publish', auth: true },
     { label: t('nav.marketplace'), to: '/search' },
-    { label: t('nav.githubSkills'), to: '/github' },
     { label: t('nav.suites'), to: '/suites' },
     { label: t('nav.dashboard'), to: '/dashboard', auth: true },
   ]
